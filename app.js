@@ -1,7 +1,12 @@
 /**
  * VCTM Foundly - Verified Campus Lost & Found System.
- * Single-Page Flow with Live Smart Matches, Photo Upload, In-App Messenger, and Account Management.
+ * Supabase Cloud PostgreSQL Integration & REST Backend.
  */
+
+// Supabase Cloud Client Configuration
+const SUPABASE_URL = 'https://utwodwtccrmibmdwtpmc.supabase.co';
+const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_7tppJQ-Kq9xtNaHBcKOetA_kU8p3MSW';
+const supabaseClient = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY) : null;
 
 let items = [];
 let matches = [];
