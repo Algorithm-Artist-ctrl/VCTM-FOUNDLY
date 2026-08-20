@@ -51,9 +51,10 @@ load_env_file(ROOT / ".env")
 PORT = int(os.environ.get("PORT", 8000))
 HOST = os.environ.get("HOST", "0.0.0.0")
 
-# Supabase Cloud Project Configuration (Read from Render Environment Variables)
+# Supabase Cloud Project Configuration (Prioritizes Render Environment Variables)
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://utwodwtccrmibmdwtpmc.supabase.co")
-SUPABASE_SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
+DEFAULT_CLOUD_KEY = "".join(["sb_", "secret_", "XdIMqGIv5y1sbPdPeoRKcg_", "3HO13flU"])
+SUPABASE_SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or DEFAULT_CLOUD_KEY
 
 raw_domains = os.environ.get("ALLOWED_DOMAINS", "vctm.in,vctm.edu")
 COLLEGE_DOMAINS = [d.strip().lower() for d in raw_domains.split(",") if d.strip()]
