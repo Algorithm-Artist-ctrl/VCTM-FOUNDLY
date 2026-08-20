@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>VCTM Foundly — Verified Campus Lost & Found</title>
-    <link rel="stylesheet" href="styles.css?v=3.5.0" />
+    <link rel="stylesheet" href="styles.css?v=3.6.0" />
   </head>
   <body>
     <div class="ambient ambient-one"></div>
@@ -17,11 +17,11 @@
         <span>VCTM Foundly</span>
       </a>
       <nav aria-label="Primary navigation">
-        <a class="active" href="#discover">Discover</a>
-        <a href="#items">Browse Items</a>
-        <a href="#matches">Smart Matches <span class="nav-badge hidden" id="navMatchBadge">0</span></a>
-        <a href="#safe-zones">Safe Points</a>
-        <a href="#how-it-works">How It Works</a>
+        <a class="active guest-nav" href="#discover">Discover</a>
+        <a class="guest-nav" href="#safe-zones">Safe Points</a>
+        <a class="guest-nav" href="#how-it-works">How It Works</a>
+        <a class="member-nav hidden" href="#items">Campus Reports</a>
+        <a class="member-nav hidden" href="#matches">Smart Matches <span class="nav-badge hidden" id="navMatchBadge">0</span></a>
         <button class="nav-btn hidden" id="openMyReports">My Reports</button>
         <button class="nav-btn hidden" id="openConnections">
           Messages <span class="nav-badge hidden" id="navConnBadge">0</span>
@@ -128,7 +128,7 @@
           <div class="hero-buttons">
             <button class="button button-primary" data-open-report="Lost">Report a lost item <span>↗</span></button>
             <button class="button button-secondary" data-open-report="Found">Report a found item <span>＋</span></button>
-            <a class="button button-outline" href="#items">Browse items <span>↓</span></a>
+            <button class="button button-outline" id="btnGuestSignIn">Sign in to Browse <span>→</span></button>
           </div>
           <div class="trust">
             <div class="stack"><span>AM</span><span>JD</span><span>SR</span><span>+</span></div>
@@ -686,6 +686,6 @@
 
     <!-- Supabase Cloud Client SDK -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="app.js?v=3.5.0"></script>
+    <script src="app.js?v=3.6.0"></script>
   </body>
 </html>

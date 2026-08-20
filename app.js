@@ -1043,8 +1043,8 @@ function syncUser() {
   const howItWorks = document.querySelector('#how-it-works');
   const safeZones = document.querySelector('#safe-zones');
   const quickActions = document.querySelector('.quick-actions');
-  const navHowItWorks = document.querySelector('a[href="#how-it-works"]');
-  const navSafeZones = document.querySelector('a[href="#safe-zones"]');
+  const itemsSection = document.querySelector('#items');
+  const matchesSection = document.querySelector('#matches');
 
   if (signed) {
     guestHero?.classList.add('hidden');
@@ -1052,8 +1052,11 @@ function syncUser() {
     howItWorks?.classList.add('hidden');
     safeZones?.classList.add('hidden');
     quickActions?.classList.add('hidden');
-    navHowItWorks?.classList.add('hidden');
-    navSafeZones?.classList.add('hidden');
+    itemsSection?.classList.remove('hidden');
+    matchesSection?.classList.remove('hidden');
+
+    document.querySelectorAll('.guest-nav').forEach((el) => el.classList.add('hidden'));
+    document.querySelectorAll('.member-nav').forEach((el) => el.classList.remove('hidden'));
 
     const initials = (currentUser.name || 'User')
       .split(' ')
@@ -1087,8 +1090,11 @@ function syncUser() {
     howItWorks?.classList.remove('hidden');
     safeZones?.classList.remove('hidden');
     quickActions?.classList.remove('hidden');
-    navHowItWorks?.classList.remove('hidden');
-    navSafeZones?.classList.remove('hidden');
+    itemsSection?.classList.add('hidden');
+    matchesSection?.classList.add('hidden');
+
+    document.querySelectorAll('.guest-nav').forEach((el) => el.classList.remove('hidden'));
+    document.querySelectorAll('.member-nav').forEach((el) => el.classList.add('hidden'));
 
     const myPostsPill = document.querySelector('#myPostsFilterPill');
     if (myPostsPill) myPostsPill.classList.add('hidden');
@@ -1097,6 +1103,8 @@ function syncUser() {
   // Re-render feed items to update owner badges and buttons
   renderItems();
 }
+
+document.querySelector('#btnGuestSignIn')?.addEventListener('click', () => openAuthModal('login'));
 
 // User Dashboard Metric Cards Clicks
 document.querySelector('#btnMetricReports')?.addEventListener('click', openMyReports);
