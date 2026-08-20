@@ -1,6 +1,7 @@
 /**
- * VCTM Foundly - Real-World Campus Lost & Found Client Application.
- * Full-featured: Photo optimization, item lifecycle, smart search, claim verification, admin tools.
+ * VCTM Foundly - Production Campus Lost & Found Client Application.
+ * Full-featured: Dual Auth Token/Cookie, Auto Smart Matching, Direct Contacts, In-App Chat,
+ * Photo Canvas Optimizer, Item Lifecycle, and Admin CSV Tools.
  */
 
 let items = [];
@@ -43,7 +44,7 @@ const photoPreviewBox = document.querySelector('#photoPreviewBox');
 const photoPreviewImg = document.querySelector('#photoPreviewImg');
 const removePhotoBtn = document.querySelector('#removePhotoBtn');
 
-// Helper: Escape HTML strings to prevent XSS
+// Helper: Escape HTML strings
 const escapeHtml = (str) =>
   String(str ?? '').replace(/[&<>'"]/g, (c) => ({
     '&': '&amp;',
@@ -53,19 +54,34 @@ const escapeHtml = (str) =>
     '"': '&quot;',
   }[c]));
 
-// Helper: Unified API Fetcher
+// Helper: Unified API Fetcher with Dual Token/Cookie Auth
 const api = async (path, options = {}) => {
+  const token = localStorage.getItem('foundly_token');
+  const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
   const response = await fetch(path, {
-    credentials: 'same-origin',
-    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+    credentials: 'include',
+    headers,
     ...options,
   });
+
   if (response.headers.get('Content-Type')?.includes('text/csv')) {
     return response.blob();
   }
-  const data = await response.json();
+
+  let data;
+  try {
+    data = await response.json();
+  } catch (err) {
+    data = { error: `Server error (${response.status})` };
+  }
+
   if (!response.ok) {
-    throw new Error(data.error || 'Something went wrong. Please try again.');
+    const errorMsg = data.detail || data.error || 'Something went wrong. Please try again.';
+    throw new Error(errorMsg);
   }
   return data;
 };
@@ -106,7 +122,7 @@ const categoryTone = (cat) =>
     'Sports & fitness': 'tone-c',
   }[cat] || 'tone-a');
 
-// Client-side image resizing & compression to WebP/JPEG Data URI (max 1000px, <400KB)
+// Client-side image resizing & compression (max 1000px, <400KB)
 function processImageFile(file) {
   if (!file || !file.type.startsWith('image/')) {
     notify('Please select a valid image file (JPG, PNG, WebP).');
@@ -138,7 +154,6 @@ function processImageFile(file) {
       const ctx = canvas.getContext('2d');
       ctx.drawImage(img, 0, 0, width, height);
 
-      // Export as compressed JPEG data URL
       const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
       currentUploadedImageBase64 = dataUrl;
       photoPreviewImg.src = dataUrl;
@@ -158,12 +173,17 @@ function clearPhotoUpload() {
   if (photoPreviewBox) photoPreviewBox.classList.add('hidden');
 }
 
-// Drag and drop listeners on Photo Dropzone
+// Photo dropzone listeners (without dismissing modal)
 if (photoDropzone && photoInput) {
   photoDropzone.addEventListener('click', (e) => {
-    if (e.target !== removePhotoBtn && !photoPreviewBox.contains(e.target)) {
-      photoInput.click();
+    if (e.target.id === 'removePhotoBtn' || e.target.closest('#removePhotoBtn')) {
+      return;
     }
+    photoInput.click();
+  });
+
+  photoInput.addEventListener('click', (e) => {
+    e.stopPropagation();
   });
 
   photoInput.addEventListener('change', (e) => {
@@ -211,7 +231,12 @@ function renderItems() {
   const filtered = items.filter((i) => {
     const matchType = currentFilter === 'All' || i.type === currentFilter;
     const matchCat = currentCategoryFilter === 'All' || i.category === currentCategoryFilter;
-    const matchStatus = currentStatusFilter === 'All' || (currentStatusFilter === 'Open' ? (i.status === 'Open' || !i.status) : i.status === currentStatusFilter);
+    const matchStatus =
+      currentStatusFilter === 'All'
+        ? true
+        : currentStatusFilter === 'Open'
+        ? i.status === 'Open' || !i.status
+        : i.status === currentStatusFilter;
     const searchTarget = `${i.name} ${i.category} ${i.location} ${i.description || ''}`.toLowerCase();
     const matchSearch = !q || searchTarget.includes(q);
     return matchType && matchCat && matchStatus && matchSearch;
@@ -253,11 +278,11 @@ function renderItems() {
           <h3>${escapeHtml(i.name)}</h3>
           <div class="card-meta">
             <span>⌖ ${escapeHtml(i.location)}</span>
-            <span>${i.date || new Date(i.created_at + 'Z').toLocaleDateString()}</span>
+            <span>${i.date || ''}</span>
           </div>
         </div>
         <div class="item-action">
-          <span>View Details & Verification</span>
+          <span>View Details & Connect</span>
           <strong>→</strong>
         </div>
       </article>
@@ -285,7 +310,7 @@ function openItemDetail(itemId) {
 
   document.querySelector('#detailTypeBadge').textContent = item.type.toUpperCase();
   document.querySelector('#detailTypeBadge').className = `pill-badge ${item.type === 'Found' ? 'found-pill' : ''}`;
-  
+
   const isResolved = item.status === 'Resolved';
   const statusBadge = document.querySelector('#detailStatusBadge');
   statusBadge.textContent = isResolved ? 'RESOLVED / RETURNED' : 'ACTIVE LISTING';
@@ -294,12 +319,12 @@ function openItemDetail(itemId) {
   document.querySelector('#detailCategoryBadge').textContent = item.category.toUpperCase();
   document.querySelector('#detailTitle').textContent = item.name;
   document.querySelector('#detailLocation').textContent = item.location;
-  document.querySelector('#detailDate').textContent = item.date || item.created_at;
+  document.querySelector('#detailDate').textContent = item.date || item.created_at || '';
   document.querySelector('#detailReporter').textContent = item.owner_name || 'Campus Member';
   document.querySelector('#detailRole').textContent = item.owner_role || 'Verified';
   document.querySelector('#detailDescription').textContent = item.description || 'No additional description provided.';
 
-  // Photo / Media Display
+  // Photo Display
   const imgElem = document.querySelector('#detailImg');
   const emojiElem = document.querySelector('#detailEmojiBox');
   if (item.image_data) {
@@ -366,7 +391,7 @@ function openItemDetail(itemId) {
   } else {
     actionsBox.innerHTML = `
       <button class="button button-primary" id="btnClaimItem">
-        ${item.type === 'Found' ? 'Claim This Item' : 'I Found This Item'} <span>→</span>
+        💬 Contact Reporter & ${item.type === 'Found' ? 'Claim Item' : 'Offer Help'} <span>→</span>
       </button>
     `;
     document.querySelector('#btnClaimItem')?.addEventListener('click', () => {
@@ -404,6 +429,10 @@ async function checkPendingUpdates() {
   if (!currentUser) return;
   try {
     const data = await api('/api/session');
+    if (data.user) {
+      currentUser = data.user;
+      syncUser();
+    }
     const count = data.pending_count || 0;
     const navBadge = document.querySelector('#navConnBadge');
     const notifDot = document.querySelector('#notifDot');
@@ -441,7 +470,6 @@ function openReport(type) {
   }
   setType(type);
   clearPhotoUpload();
-  // Pre-fill today's date
   const dateInput = reportForm.querySelector('input[name="date"]');
   if (dateInput && !dateInput.value) {
     dateInput.value = new Date().toISOString().split('T')[0];
@@ -468,7 +496,7 @@ function setAuthMode(mode) {
 function openConnection(itemId) {
   if (!currentUser) {
     authDialog.showModal();
-    notify('Please sign in to send a claim or connection request.');
+    notify('Please sign in to contact the reporter.');
     return;
   }
   const item = items.find((x) => x.id === itemId);
@@ -487,7 +515,7 @@ function openConnection(itemId) {
   connectDialog.showModal();
 }
 
-// Connections Modal
+// Connections & Direct Contact Modal
 async function openConnections() {
   if (!currentUser) {
     authDialog.showModal();
@@ -499,37 +527,61 @@ async function openConnections() {
 
     const card = (c, incoming) => {
       const isAccepted = c.status === 'Accepted';
-      const contactInfo = incoming
-        ? `${c.sender_email}${c.sender_phone ? ` · Tel: ${c.sender_phone}` : ''}`
-        : `${c.recipient_email}${c.recipient_phone ? ` · Tel: ${c.recipient_phone}` : ''}`;
+      const isMatched = c.status === 'Matched';
+      const otherName = incoming ? c.sender_name : c.recipient_name;
+      const otherRole = incoming ? c.sender_role : c.recipient_role;
+      const otherEmail = incoming ? c.sender_email : c.recipient_email;
+      const otherPhone = incoming ? c.sender_phone : c.recipient_phone;
 
       return `
-        <article class="connection-card">
+        <article class="connection-card" data-conn-id="${c.id}">
           <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-            <h3>${escapeHtml(c.item_name)} (${escapeHtml(c.item_type || 'Report')})</h3>
+            <div>
+              ${isMatched ? '<span class="match-tag">⚡ AUTOMATIC MATCH</span>' : ''}
+              <h3>${escapeHtml(c.item_name)} (${escapeHtml(c.item_type || 'Report')})</h3>
+            </div>
             <small style="color: var(--muted);">${new Date(c.created_at + 'Z').toLocaleDateString()}</small>
           </div>
           <small>${
             incoming
-              ? `Request from <b>${escapeHtml(c.sender_name)}</b> (${escapeHtml(c.sender_role || 'Member')})`
-              : `Your request to <b>${escapeHtml(c.recipient_name)}</b>`
+              ? `From: <b>${escapeHtml(otherName)}</b> (${escapeHtml(otherRole || 'Campus Member')})`
+              : `To: <b>${escapeHtml(otherName)}</b>`
           }</small>
-          <p><b>Verification Message:</b> "${escapeHtml(c.message)}"</p>
+          <p style="white-space: pre-wrap;">${escapeHtml(c.message)}</p>
+          
           ${
             incoming && c.status === 'Pending'
               ? `
             <div class="connection-actions">
-              <button class="accept-request" data-request-action="Accepted" data-request-id="${c.id}">✓ Accept & Share Contact</button>
+              <button class="accept-request" data-request-action="Accepted" data-request-id="${c.id}">✓ Accept & Share Contacts</button>
               <button class="decline-request" data-request-action="Declined" data-request-id="${c.id}">Decline</button>
             </div>
           `
               : `
-            <span class="request-status ${isAccepted ? 'accepted' : ''}">
+            <span class="request-status ${isAccepted ? 'accepted' : isMatched ? 'matched' : ''}">
               Status: ${escapeHtml(c.status)}
             </span>
             ${
-              isAccepted
-                ? `<div class="contact-revealed">🤝 <b>Verified Contact:</b> ${escapeHtml(contactInfo)} (Arrange handoff safely on campus)</div>`
+              isAccepted || isMatched
+                ? `
+              <div class="contact-revealed">
+                🤝 <b>Verified Contacts Revealed:</b>
+                <div class="contact-quick-buttons">
+                  <a class="btn-contact-action mail" href="mailto:${escapeHtml(otherEmail)}?subject=VCTM Foundly: ${encodeURIComponent(c.item_name)}">
+                    ✉️ Email: ${escapeHtml(otherEmail)}
+                  </a>
+                  ${
+                    otherPhone
+                      ? `<a class="btn-contact-action tel" href="tel:${escapeHtml(otherPhone)}">📞 Call: ${escapeHtml(otherPhone)}</a>`
+                      : ''
+                  }
+                </div>
+                <div class="connection-reply-box">
+                  <input type="text" placeholder="Type a quick message..." class="reply-msg-input" data-reply-conn-id="${c.id}" />
+                  <button type="button" class="btn-send-reply" data-reply-conn-id="${c.id}">Send 💬</button>
+                </div>
+              </div>
+            `
                 : ''
             }
           `
@@ -547,7 +599,7 @@ async function openConnections() {
         ? `
       ${
         received.length
-          ? `<p class="eyebrow" style="margin-top: 14px;"><span></span> RECEIVED REQUESTS (${received.length})</p>${received.map((c) => card(c, true)).join('')}`
+          ? `<p class="eyebrow" style="margin-top: 14px;"><span></span> INCOMING REQUESTS & MATCHES (${received.length})</p>${received.map((c) => card(c, true)).join('')}`
           : ''
       }
       ${
@@ -556,7 +608,7 @@ async function openConnections() {
           : ''
       }
     `
-        : '<p class="empty">No connection requests yet. Browse items and click "View Details" to send a safe connection request.</p>';
+        : '<p class="empty">No active connections yet. Browse items and click "View Details & Connect" to send a message.</p>';
 
     connectionsDialog.showModal();
     checkPendingUpdates();
@@ -586,7 +638,7 @@ async function openMyReports() {
           <article class="my-report-card">
             <div class="my-report-info">
               <b>${escapeHtml(it.name)} (${escapeHtml(it.type)})</b>
-              <small>⌖ ${escapeHtml(it.location)} · ${it.date} · 💬 ${it.connections_count || 0} requests</small>
+              <small>⌖ ${escapeHtml(it.location)} · ${it.date} · 💬 ${it.connections_count || 0} claims/matches</small>
             </div>
             <div class="my-report-actions">
               <button class="button button-sm button-secondary" data-my-toggle-id="${it.id}" data-current-status="${it.status}">
@@ -720,7 +772,8 @@ if (reportForm) {
       reportForm.reset();
       clearPhotoUpload();
       await loadItems();
-      notify('Your report is now live for the VCTM community.');
+      checkPendingUpdates();
+      notify('Your report is live! We will notify you instantly if a match is found.');
     } catch (err) {
       notify(err.message);
     }
@@ -736,16 +789,10 @@ document.querySelectorAll('.auth-tab').forEach((b) =>
   b.addEventListener('click', () => setAuthMode(b.dataset.authMode))
 );
 
-// Click-outside (backdrop click) to close any open dialog
+// Click-outside (backdrop click) to close dialogs without breaking inner elements
 document.querySelectorAll('dialog').forEach((dlg) => {
   dlg.addEventListener('click', (e) => {
-    const rect = dlg.getBoundingClientRect();
-    const isInDialog =
-      rect.top <= e.clientY &&
-      e.clientY <= rect.top + rect.height &&
-      rect.left <= e.clientX &&
-      e.clientX <= rect.left + rect.width;
-    if (!isInDialog) {
+    if (e.target === dlg) {
       dlg.close();
     }
   });
@@ -756,6 +803,7 @@ if (authForm) {
     e.preventDefault();
     const d = new FormData(authForm);
     const errElem = document.querySelector('#authError');
+    errElem.textContent = '';
     try {
       const payload =
         authMode === 'signup'
@@ -776,15 +824,21 @@ if (authForm) {
         body: JSON.stringify(payload),
       });
 
+      if (res.token) {
+        localStorage.setItem('foundly_token', res.token);
+      }
       currentUser = res.user;
       authDialog.close();
       authForm.reset();
       syncUser();
-      notify(`Welcome back, ${currentUser.name}!`);
+      notify(`Welcome, ${currentUser.name}!`);
       checkPendingUpdates();
       if (currentUser.role === 'admin') openAdmin();
     } catch (err) {
       errElem.textContent = err.message;
+      if (err.message.includes('Create account')) {
+        setTimeout(() => setAuthMode('signup'), 1500);
+      }
     }
   });
 }
@@ -834,7 +888,7 @@ if (connectForm) {
       });
       connectDialog.close();
       connectForm.reset();
-      notify('Connection request sent safely to the reporter.');
+      notify('Message & claim request sent to the reporter.');
     } catch (err) {
       notify(err.message);
     }
@@ -849,19 +903,39 @@ document.querySelector('#openMyReports')?.addEventListener('click', openMyReport
 document.querySelector('#quickMyReports')?.addEventListener('click', openMyReports);
 document.querySelector('#closeMyReports')?.addEventListener('click', () => myReportsDialog.close());
 
-// Action on Connections List (Accept / Decline)
+// Action on Connections List (Accept / Decline / Send Chat Message)
 document.querySelector('#connectionsList')?.addEventListener('click', async (e) => {
-  const b = e.target.closest('[data-request-action]');
-  if (!b) return;
-  try {
-    await api(`/api/connections/${b.dataset.requestId}/status`, {
-      method: 'POST',
-      body: JSON.stringify({ status: b.dataset.requestAction }),
-    });
-    notify(`Connection ${b.dataset.requestAction.toLowerCase()}. Contact revealed!`);
-    openConnections();
-  } catch (err) {
-    notify(err.message);
+  const actionBtn = e.target.closest('[data-request-action]');
+  if (actionBtn) {
+    try {
+      await api(`/api/connections/${actionBtn.dataset.requestId}/status`, {
+        method: 'POST',
+        body: JSON.stringify({ status: actionBtn.dataset.requestAction }),
+      });
+      notify(`Request ${actionBtn.dataset.requestAction.toLowerCase()}. Contact revealed!`);
+      openConnections();
+    } catch (err) {
+      notify(err.message);
+    }
+    return;
+  }
+
+  const sendReplyBtn = e.target.closest('.btn-send-reply');
+  if (sendReplyBtn) {
+    const connId = sendReplyBtn.dataset.replyConnId;
+    const input = document.querySelector(`.reply-msg-input[data-reply-conn-id="${connId}"]`);
+    const text = input?.value.trim();
+    if (!text) return;
+    try {
+      await api(`/api/connections/${connId}/message`, {
+        method: 'POST',
+        body: JSON.stringify({ message: text }),
+      });
+      notify('Message sent!');
+      openConnections();
+    } catch (err) {
+      notify(err.message);
+    }
   }
 });
 
@@ -913,6 +987,7 @@ document.querySelector('#signOut')?.addEventListener('click', async () => {
   try {
     await api('/api/logout', { method: 'POST' });
   } catch (_) {}
+  localStorage.removeItem('foundly_token');
   currentUser = null;
   adminDialog.close();
   syncUser();
@@ -921,7 +996,7 @@ document.querySelector('#signOut')?.addEventListener('click', async () => {
 
 document.querySelector('#notifications')?.addEventListener('click', () => {
   if (currentUser) openConnections();
-  else notify('Please sign in to receive connection updates.');
+  else notify('Please sign in to view notifications & messages.');
 });
 
 // Admin Export CSV
@@ -969,12 +1044,11 @@ document.querySelector('#adminReports')?.addEventListener('click', async (e) => 
     checkPendingUpdates();
     await loadItems();
 
-    // Auto-refresh feeds and notifications every 10 seconds
     setInterval(async () => {
       await loadItems();
       checkPendingUpdates();
-    }, 10000);
+    }, 8000);
   } catch (e) {
-    notify('Please run python3 server.py to connect to the campus database.');
+    console.error('Initialization error:', e);
   }
 })();

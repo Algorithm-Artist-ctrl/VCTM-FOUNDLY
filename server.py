@@ -1,7 +1,7 @@
 """VCTM Foundly - Enterprise Production Backend (FastAPI + SQLAlchemy + PostgreSQL/SQLite).
 
 High-concurrency asynchronous API and web application server with database ORM,
-connection pooling, automated migrations, OpenAPI documentation, and security middleware.
+automated smart-matching notifications, direct connection channels, OpenAPI documentation, and security middleware.
 """
 import csv
 import hashlib
@@ -18,7 +18,6 @@ from typing import Optional
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response as RawResponse
-from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from sqlalchemy import (
     Column,
@@ -44,7 +43,6 @@ if not DATABASE_URL:
     db_file = os.environ.get("DATABASE_PATH", str(ROOT / "foundly.db"))
     DATABASE_URL = f"sqlite:///{db_file}"
 elif DATABASE_URL.startswith("postgres://"):
-    # Fix for Heroku/Render legacy postgres:// URI
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
 is_sqlite = DATABASE_URL.startswith("sqlite")
@@ -66,7 +64,7 @@ ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin123")
 ALLOW_ALL_DOMAINS = "*" in COLLEGE_DOMAINS or os.environ.get("ALLOW_ALL_DOMAINS", "").lower() in ("true", "1")
 
 RATE_LIMITS = defaultdict(list)
-MAX_REQUESTS_PER_WINDOW = 60
+MAX_REQUESTS_PER_WINDOW = 120
 RATE_WINDOW_SECONDS = 60
 
 
@@ -130,7 +128,7 @@ class Connection(Base):
     sender_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     recipient_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     message = Column(Text, nullable=False)
-    status = Column(String(20), default="Pending")  # 'Pending', 'Accepted', 'Declined'
+    status = Column(String(20), default="Pending")  # 'Pending', 'Accepted', 'Declined', 'Matched'
     created_at = Column(DateTime, default=datetime.utcnow)
 
     item = relationship("Item", back_populates="connections")
@@ -163,7 +161,7 @@ def verify_password(password: str, salt_hex: str, expected_hash_hex: str) -> boo
 def is_college_email(email: str) -> bool:
     if ALLOW_ALL_DOMAINS:
         return bool(re.match(r"^[^@]+@[^@]+\.[^@]+$", email))
-    email = email.lower()
+    email = email.lower().strip()
     return any(email.endswith("@" + domain) for domain in COLLEGE_DOMAINS)
 
 
@@ -174,7 +172,7 @@ def seed_database():
     db = SessionLocal()
     try:
         # Seed Admin user
-        admin = db.query(User).filter(User.email == ADMIN_EMAIL).first()
+        admin = db.query(User).filter(func.lower(User.email) == ADMIN_EMAIL).first()
         if not admin:
             salt, digest = password_hash(ADMIN_PASSWORD)
             admin = User(
@@ -184,6 +182,7 @@ def seed_database():
                 password_hash=digest,
                 role="admin",
                 campus_role="Administrator",
+                phone="+91 9876543210",
             )
             db.add(admin)
             db.commit()
@@ -218,8 +217,8 @@ seed_database()
 # -------------------------------------------------------------
 app = FastAPI(
     title="VCTM Foundly API",
-    description="Enterprise Campus Lost and Found REST API",
-    version="2.0.0",
+    description="Enterprise Campus Lost and Found REST API with Automated Smart Matcher",
+    version="2.1.0",
     docs_url="/docs",
     redoc_url="/redoc",
 )
@@ -236,7 +235,6 @@ app.add_middleware(
 @app.middleware("http")
 async def security_and_rate_limit_middleware(request: Request, call_next):
     client_ip = request.client.host if request.client else "127.0.0.1"
-    # Rate limit check on API mutations
     if request.url.path.startswith("/api/") and request.method in ("POST", "DELETE"):
         if not check_rate_limit(client_ip):
             return JSONResponse(status_code=429, content={"error": "Too many requests. Please wait a moment."})
@@ -249,7 +247,7 @@ async def security_and_rate_limit_middleware(request: Request, call_next):
 
 
 # -------------------------------------------------------------
-# DEPENDENCIES
+# DEPENDENCIES (DUAL COOKIE & BEARER TOKEN)
 # -------------------------------------------------------------
 def get_db():
     db = SessionLocal()
@@ -260,9 +258,15 @@ def get_db():
 
 
 def get_current_user(request: Request, db: Session = Depends(get_db)) -> Optional[User]:
-    token = request.cookies.get("foundly_session")
+    token = None
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.split(" ", 1)[1].strip()
+    if not token:
+        token = request.cookies.get("foundly_session")
     if not token:
         return None
+
     session_row = db.query(UserSession).filter(UserSession.token == token).first()
     if not session_row:
         return None
@@ -326,6 +330,10 @@ class ConnectionStatusRequest(BaseModel):
     status: str  # 'Accepted' or 'Declined'
 
 
+class MessageReplyRequest(BaseModel):
+    message: str
+
+
 # -------------------------------------------------------------
 # STATIC FILE ROUTES (FRONTEND SPA)
 # -------------------------------------------------------------
@@ -347,7 +355,7 @@ async def serve_js():
 # -------------------------------------------------------------
 # AUTHENTICATION ENDPOINTS
 # -------------------------------------------------------------
-def set_session_cookie(response: Response, user_id: int, db: Session):
+def create_user_session(response: Response, user_id: int, db: Session) -> str:
     token = secrets.token_urlsafe(32)
     session_obj = UserSession(token=token, user_id=user_id)
     db.add(session_obj)
@@ -360,6 +368,7 @@ def set_session_cookie(response: Response, user_id: int, db: Session):
         max_age=2592000,
         path="/",
     )
+    return token
 
 
 @app.get("/api/session")
@@ -372,7 +381,7 @@ async def check_session(
 
     pending_count = (
         db.query(Connection)
-        .filter(Connection.recipient_id == current_user.id, Connection.status == "Pending")
+        .filter(Connection.recipient_id == current_user.id, Connection.status.in_(["Pending", "Matched"]))
         .count()
     )
     return {
@@ -402,13 +411,13 @@ async def register(
         raise HTTPException(status_code=400, detail="Please enter your full name.")
     if not is_college_email(email):
         domains_str = ", ".join(["@" + d for d in COLLEGE_DOMAINS])
-        raise HTTPException(status_code=400, detail=f"Please use a verified institutional email ({domains_str}).")
+        raise HTTPException(status_code=400, detail=f"Please use an institutional email ({domains_str}).")
     if len(password) < 6:
         raise HTTPException(status_code=400, detail="Password must be at least 6 characters.")
 
-    existing = db.query(User).filter(User.email == email).first()
+    existing = db.query(User).filter(func.lower(User.email) == email).first()
     if existing:
-        raise HTTPException(status_code=409, detail="An account with this email already exists.")
+        raise HTTPException(status_code=409, detail="An account with this email already exists. Please sign in instead.")
 
     salt, digest = password_hash(password)
     user = User(
@@ -423,7 +432,7 @@ async def register(
     db.commit()
     db.refresh(user)
 
-    set_session_cookie(response, user.id, db)
+    token = create_user_session(response, user.id, db)
     return {
         "user": {
             "id": user.id,
@@ -432,7 +441,8 @@ async def register(
             "role": user.role,
             "campus_role": user.campus_role,
             "phone": user.phone,
-        }
+        },
+        "token": token,
     }
 
 
@@ -443,11 +453,19 @@ async def login(
     db: Session = Depends(get_db),
 ):
     email = data.email.strip().lower()
-    user = db.query(User).filter(User.email == email).first()
-    if not user or not verify_password(data.password, user.password_salt, user.password_hash):
-        raise HTTPException(status_code=401, detail="Email or password is incorrect.")
+    user = db.query(User).filter(func.lower(User.email) == email).first()
+    if not user:
+        raise HTTPException(
+            status_code=401,
+            detail="No account found with this email. Click 'Create account' to register in seconds.",
+        )
+    if not verify_password(data.password, user.password_salt, user.password_hash):
+        raise HTTPException(
+            status_code=401,
+            detail="Incorrect password. You can reset it using 'Forgot password?' below.",
+        )
 
-    set_session_cookie(response, user.id, db)
+    token = create_user_session(response, user.id, db)
     return {
         "user": {
             "id": user.id,
@@ -456,7 +474,8 @@ async def login(
             "role": user.role,
             "campus_role": user.campus_role,
             "phone": user.phone,
-        }
+        },
+        "token": token,
     }
 
 
@@ -475,7 +494,7 @@ async def reset_password(data: ResetPasswordRequest, db: Session = Depends(get_d
     email = data.email.strip().lower()
     if not email or len(data.new_password) < 6:
         raise HTTPException(status_code=400, detail="Enter valid email and a password with at least 6 characters.")
-    user = db.query(User).filter(User.email == email).first()
+    user = db.query(User).filter(func.lower(User.email) == email).first()
     if not user:
         raise HTTPException(status_code=404, detail="No account found with this email.")
     salt, digest = password_hash(data.new_password)
@@ -483,6 +502,59 @@ async def reset_password(data: ResetPasswordRequest, db: Session = Depends(get_d
     user.password_hash = digest
     db.commit()
     return {"ok": True, "message": "Password updated successfully. Please sign in."}
+
+
+# -------------------------------------------------------------
+# AUTOMATED SMART MATCHING ENGINE
+# -------------------------------------------------------------
+def find_and_notify_matches(new_item: Item, db: Session):
+    """When an item is reported, automatically search counterpart listings and send match notifications!"""
+    opp_type = "Found" if new_item.type == "Lost" else "Lost"
+    words = re.findall(r"\b[a-zA-Z0-9]{3,}\b", f"{new_item.name} {new_item.location}".lower())
+    stop_words = {"the", "and", "for", "with", "item", "lost", "found", "room", "near", "hall"}
+    keywords = [w for w in words if w not in stop_words]
+
+    candidates = (
+        db.query(Item)
+        .filter(
+            Item.type == opp_type,
+            Item.status == "Open",
+            Item.owner_id != new_item.owner_id,
+        )
+        .all()
+    )
+
+    for cand in candidates:
+        cand_text = f"{cand.name} {cand.location} {cand.description or ''}".lower()
+        is_match = (
+            (cand.category == new_item.category and cand.category != "Other")
+            or any(kw in cand_text for kw in keywords)
+        )
+        if is_match:
+            existing = (
+                db.query(Connection)
+                .filter(
+                    Connection.item_id.in_([new_item.id, cand.id]),
+                    Connection.sender_id.in_([new_item.owner_id, cand.owner_id]),
+                    Connection.recipient_id.in_([new_item.owner_id, cand.owner_id]),
+                )
+                .first()
+            )
+            if not existing:
+                # Notify the person who reported the Lost item
+                lost_owner_id = new_item.owner_id if new_item.type == "Lost" else cand.owner_id
+                finder_owner_id = new_item.owner_id if new_item.type == "Found" else cand.owner_id
+                finder_item = new_item if new_item.type == "Found" else cand
+
+                match_conn = Connection(
+                    item_id=finder_item.id,
+                    sender_id=finder_owner_id,
+                    recipient_id=lost_owner_id,
+                    message=f"✦ Automatic Campus Match: Someone reported finding '{finder_item.name}' at '{finder_item.location}'. Connect directly to verify ownership and arrange safe pickup!",
+                    status="Matched",
+                )
+                db.add(match_conn)
+    db.commit()
 
 
 # -------------------------------------------------------------
@@ -531,6 +603,7 @@ async def get_items(
                 "owner_id": it.owner.id,
                 "owner_name": it.owner.name,
                 "owner_role": it.owner.campus_role,
+                "owner_email": it.owner.email,
             }
             for it in items
         ]
@@ -558,6 +631,7 @@ async def get_item_detail(item_id: int, db: Session = Depends(get_db)):
             "owner_id": it.owner.id,
             "owner_name": it.owner.name,
             "owner_role": it.owner.campus_role,
+            "owner_email": it.owner.email,
         }
     }
 
@@ -588,6 +662,13 @@ async def create_item(
     db.add(item)
     db.commit()
     db.refresh(item)
+
+    # Run automated smart match notifications
+    try:
+        find_and_notify_matches(item, db)
+    except Exception as e:
+        print("Smart Matcher notice:", e)
+
     return {"item": {"id": item.id}}
 
 
@@ -656,7 +737,7 @@ async def get_user_items(
 
 
 # -------------------------------------------------------------
-# SAFE CONNECTIONS & CLAIM ENDPOINTS
+# SAFE CONNECTIONS, DIRECT CONTACTS & CHAT ENDPOINTS
 # -------------------------------------------------------------
 @app.get("/api/connections")
 async def get_connections(
@@ -674,7 +755,7 @@ async def get_connections(
             {
                 "id": c.id,
                 "item_id": c.item_id,
-                "item_name": c.item.name if c.item else "Deleted Item",
+                "item_name": c.item.name if c.item else "Campus Item",
                 "item_type": c.item.type if c.item else "",
                 "item_location": c.item.location if c.item else "",
                 "message": c.message,
@@ -684,12 +765,12 @@ async def get_connections(
                 "sender_name": c.sender.name,
                 "sender_email": c.sender.email,
                 "sender_role": c.sender.campus_role,
-                "sender_phone": c.sender.phone if c.status == "Accepted" else None,
+                "sender_phone": c.sender.phone if c.status in ("Accepted", "Matched") else None,
                 "recipient_id": c.recipient.id,
                 "recipient_name": c.recipient.name,
                 "recipient_email": c.recipient.email,
                 "recipient_role": c.recipient.campus_role,
-                "recipient_phone": c.recipient.phone if c.status == "Accepted" else None,
+                "recipient_phone": c.recipient.phone if c.status in ("Accepted", "Matched") else None,
             }
             for c in connections
         ]
@@ -704,13 +785,13 @@ async def create_connection(
 ):
     message = data.message.strip()
     if not data.item_id or not message:
-        raise HTTPException(status_code=400, detail="Please provide a verification message.")
+        raise HTTPException(status_code=400, detail="Please provide a verification or claim message.")
 
     item = db.query(Item).filter(Item.id == data.item_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="This report no longer exists.")
     if item.owner_id == current_user.id:
-        raise HTTPException(status_code=400, detail="You cannot request connection to your own report.")
+        raise HTTPException(status_code=400, detail="You cannot send a connection request to your own report.")
 
     duplicate = (
         db.query(Connection)
@@ -722,13 +803,14 @@ async def create_connection(
         .first()
     )
     if duplicate:
-        raise HTTPException(status_code=409, detail="You already have a pending request for this report.")
+        raise HTTPException(status_code=409, detail="You already sent a connection request for this report.")
 
     conn = Connection(
         item_id=data.item_id,
         sender_id=current_user.id,
         recipient_id=item.owner_id,
         message=message,
+        status="Pending",
     )
     db.add(conn)
     db.commit()
@@ -756,6 +838,36 @@ async def update_connection_status(
     conn.status = data.status
     db.commit()
     return {"ok": True}
+
+
+@app.post("/api/connections/{connection_id}/message")
+async def reply_connection_message(
+    connection_id: int,
+    data: MessageReplyRequest,
+    current_user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    conn = (
+        db.query(Connection)
+        .filter(
+            Connection.id == connection_id,
+            or_(Connection.sender_id == current_user.id, Connection.recipient_id == current_user.id),
+        )
+        .first()
+    )
+    if not conn:
+        raise HTTPException(status_code=404, detail="Connection conversation not found.")
+
+    reply_text = data.message.strip()
+    if not reply_text:
+        raise HTTPException(status_code=400, detail="Message cannot be empty.")
+
+    timestamp = datetime.utcnow().strftime("%H:%M")
+    conn.message = f"{conn.message}\n\n💬 [{current_user.name} @ {timestamp}]: {reply_text}"
+    if conn.status == "Pending" and current_user.id == conn.recipient_id:
+        conn.status = "Accepted"
+    db.commit()
+    return {"ok": True, "message": conn.message, "status": conn.status}
 
 
 # -------------------------------------------------------------
