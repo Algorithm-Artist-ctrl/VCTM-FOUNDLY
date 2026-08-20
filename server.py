@@ -709,9 +709,6 @@ class FoundlyHandler(SimpleHTTPRequestHandler):
                 if not item:
                     self.send_error_json("Report no longer exists.", 404)
                     return
-                if item["owner_id"] == user["id"]:
-                    self.send_error_json("You cannot connect to your own report.")
-                    return
 
                 conn_data = {
                     "item_id": item["id"],

@@ -509,13 +509,25 @@ function openItemDetail(itemId) {
       itemDetailDialog.close();
       openAuthModal('login');
     });
-  } else if (isOwner || isAdmin) {
+  } else {
+    let ownerButtons = '';
+    if (isOwner || isAdmin) {
+      ownerButtons = `
+        <div style="display:flex; gap:8px; width:100%; margin-bottom:8px;">
+          <button class="button button-secondary button-sm" id="btnToggleStatus" style="flex:1;">
+            ${isResolved ? '↺ Reopen Listing' : '✓ Mark Resolved'}
+          </button>
+          <button class="button button-danger button-sm" id="btnDeleteItem" style="flex:1;">
+            🗑 Delete Report
+          </button>
+        </div>
+      `;
+    }
+
     actionsBox.innerHTML = `
-      <button class="button button-secondary button-sm" id="btnToggleStatus">
-        ${isResolved ? '↺ Reopen Listing' : '✓ Mark as Resolved'}
-      </button>
-      <button class="button button-danger button-sm" id="btnDeleteItem">
-        🗑 Delete Report
+      ${ownerButtons}
+      <button class="button button-primary" id="btnClaimItem">
+        💬 Contact Reporter & ${item.type === 'Found' ? 'Claim Item' : 'Offer Help'} <span>→</span>
       </button>
     `;
 
@@ -546,12 +558,7 @@ function openItemDetail(itemId) {
         }
       }
     });
-  } else {
-    actionsBox.innerHTML = `
-      <button class="button button-primary" id="btnClaimItem">
-        💬 Contact Reporter & ${item.type === 'Found' ? 'Claim Item' : 'Offer Help'} <span>→</span>
-      </button>
-    `;
+
     document.querySelector('#btnClaimItem')?.addEventListener('click', () => {
       itemDetailDialog.close();
       openConnection(item.id);
@@ -815,12 +822,6 @@ function openConnection(itemId) {
   }
   const item = items.find((x) => x.id === itemId);
   if (!item) return;
-
-  if (isItemOwner(item)) {
-    openMyReports();
-    notify('You are the reporter of this listing. You can manage it here.');
-    return;
-  }
 
   connectForm.itemId.value = itemId;
   const proofPrompt = document.querySelector('#connectProofPrompt');
