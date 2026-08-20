@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>VCTM Foundly — Verified Campus Lost & Found</title>
-    <link rel="stylesheet" href="styles.css?v=5.0.0" />
+    <link rel="stylesheet" href="styles.css?v=5.1.0" />
   </head>
   <body>
     <div class="ambient ambient-one"></div>
@@ -279,13 +279,33 @@
             </div>
             <div class="item-illustration">
               <div class="bag-handle"></div>
-              <div class="bag"><div class="bag-logo">F</div></div>
+              <div class="bag"><div class="bag-logo sts-emblem">S.T.S</div></div>
             </div>
             <p class="category">AI MATCH ENGINE</p>
             <h3>Smart Campus Matching</h3>
             <p class="place">⌖ VCTM College Campus · 24/7</p>
             <div class="featured-footer">
-              <span>Verified Institutional Network</span>
+              <div class="sts-badge-brand" title="S.T.S Official Campus Network">
+                <svg class="sts-logo-svg" width="28" height="28" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <defs>
+                    <linearGradient id="stsGradHero" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stop-color="#ff6b4a"/>
+                      <stop offset="50%" stop-color="#6366f1"/>
+                      <stop offset="100%" stop-color="#0ea5e9"/>
+                    </linearGradient>
+                    <linearGradient id="stsGlow" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stop-color="rgba(255,107,74,0.15)"/>
+                      <stop offset="100%" stop-color="rgba(14,165,233,0.08)"/>
+                    </linearGradient>
+                  </defs>
+                  <rect x="2" y="2" width="36" height="36" rx="10" fill="url(#stsGlow)" stroke="url(#stsGradHero)" stroke-width="1.8"/>
+                  <text x="50%" y="54%" text-anchor="middle" dominant-baseline="middle" fill="#1e293b" font-size="11" font-family="'Space Grotesk', system-ui, sans-serif" font-weight="900" letter-spacing="0.5">S.T.S</text>
+                </svg>
+                <div class="sts-brand-label">
+                  <b>S.T.S</b>
+                  <small>Official Network</small>
+                </div>
+              </div>
               <button class="text-link" data-open-report="Found">Report Item →</button>
             </div>
           </article>
@@ -798,11 +818,23 @@
 
     <footer>
       <p><b>VCTM Foundly</b> — Official Lost & Found Platform for Vivekananda College of Technology and Management.</p>
-      <span>Verified Institutional Network</span>
+      <div class="sts-footer-badge">
+        <svg width="20" height="20" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="stsGradFoot" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#ff6b4a"/>
+              <stop offset="100%" stop-color="#6366f1"/>
+            </linearGradient>
+          </defs>
+          <rect x="2" y="2" width="28" height="28" rx="8" fill="url(#stsGradFoot)"/>
+          <text x="50%" y="55%" text-anchor="middle" dominant-baseline="middle" fill="#ffffff" font-size="9" font-family="'Space Grotesk', system-ui, sans-serif" font-weight="900" letter-spacing="0.5">STS</text>
+        </svg>
+        <span>Powered by <b>S.T.S</b></span>
+      </div>
     </footer>
 
     <!-- Supabase Cloud Client SDK -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="app.js?v=5.0.0"></script>
+    <script src="app.js?v=5.1.0"></script>
   </body>
 </html>

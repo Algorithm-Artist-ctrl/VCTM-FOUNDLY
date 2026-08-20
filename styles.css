@@ -532,6 +532,68 @@ h1 em { color: var(--coral); }
   font-size: 11px;
   color: var(--muted);
 }
+
+/* S.T.S Brand Emblem & Logo */
+.sts-badge-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.sts-logo-svg {
+  flex-shrink: 0;
+  display: block;
+}
+.sts-brand-label {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
+  text-align: left;
+}
+.sts-brand-label b {
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--ink);
+  letter-spacing: 0.5px;
+}
+.sts-brand-label small {
+  font-size: 9px;
+  color: var(--muted);
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.sts-footer-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.85);
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  font-size: 12px;
+  color: var(--muted);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+}
+.sts-footer-badge b {
+  color: var(--ink);
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+  font-weight: 800;
+}
+
+.bag-logo.sts-emblem {
+  width: 44px;
+  height: 22px;
+  border-radius: 6px;
+  background: linear-gradient(135deg, #ff6b4a 0%, #6366f1 100%);
+  color: #fff;
+  font: 900 10px 'Space Grotesk', system-ui, sans-serif;
+  letter-spacing: 0.5px;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
 .text-link {
   border: 0;
   background: transparent;
