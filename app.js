@@ -1039,6 +1039,7 @@ function syncUser() {
   // Top Navbar Navigation Toggles
   document.querySelector('#openAuth')?.classList.toggle('hidden', signed);
   document.querySelector('#profileButton')?.classList.toggle('hidden', !signed);
+  document.querySelector('#topNavSignOut')?.classList.toggle('hidden', !signed);
   document.querySelector('#openMyReports')?.classList.toggle('hidden', !signed);
   document.querySelector('#openConnections')?.classList.toggle('hidden', !signed);
 
@@ -1122,23 +1123,32 @@ document.querySelector('#btnMetricMatches')?.addEventListener('click', () => {
 document.querySelector('#btnMetricMessages')?.addEventListener('click', openConnections);
 document.querySelector('#btnMetricProfile')?.addEventListener('click', openUserProfile);
 
-async function handleSignOut() {
-  try {
-    await api('/api/logout', { method: 'POST' });
-  } catch (_) {}
+async function handleSignOut(e) {
+  if (e) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
   localStorage.removeItem('foundly_token');
   localStorage.removeItem('foundly_user');
   currentUser = null;
-  userProfileDialog?.close();
-  adminDialog?.close();
+  document.querySelectorAll('dialog').forEach((d) => {
+    try { d.close(); } catch (_) {}
+  });
+  document.body.classList.remove('is-authenticated', 'modal-open');
   syncUser();
   notify('You have been signed out.');
+
+  try {
+    await fetch('/api/logout', { method: 'POST', credentials: 'include' });
+  } catch (_) {}
 }
 
 document.querySelector('#profileButton')?.addEventListener('click', openUserProfile);
 document.querySelector('#closeUserProfile')?.addEventListener('click', () => userProfileDialog.close());
 document.querySelector('#userSignOutBtn')?.addEventListener('click', handleSignOut);
 document.querySelector('#signOut')?.addEventListener('click', handleSignOut);
+document.querySelector('#topNavSignOut')?.addEventListener('click', handleSignOut);
+document.querySelector('#dashboardSignOutBtn')?.addEventListener('click', handleSignOut);
 
 document.querySelector('#profileMyReportsBtn')?.addEventListener('click', () => {
   userProfileDialog.close();
