@@ -824,15 +824,37 @@ h1 em { color: var(--coral); }
   border-top: 1px solid var(--line);
   padding: 12px 18px;
   display: flex;
+  align-items: center;
   justify-content: space-between;
   font-size: 11px;
   font-weight: 700;
-  color: var(--coral);
-  background: #faf8f5;
-  transition: 0.15s background-color;
+  transition: 0.15s background-color, 0.15s color;
 }
-.item-card:hover .card-bottom {
-  background: #f5f1ea;
+.card-bottom.action-guest {
+  background: #fbf9f5;
+  color: #718096;
+}
+.item-card:hover .card-bottom.action-guest {
+  background: #f0ebe1;
+  color: var(--ink);
+}
+.card-bottom.action-member {
+  background: #fff5f3;
+  color: var(--coral);
+}
+.item-card:hover .card-bottom.action-member {
+  background: #fee7e2;
+  color: #c4321d;
+}
+.card-bottom.action-owner {
+  background: #102a43;
+  color: #ffffff;
+}
+.card-bottom.action-owner strong {
+  color: #f7a02c;
+}
+.item-card:hover .card-bottom.action-owner {
+  background: #1e3a5f;
 }
 
 /* Safe Points Section */

@@ -239,7 +239,13 @@ function renderItems() {
   const q = (searchInput?.value || '').trim().toLowerCase();
 
   const filtered = items.filter((i) => {
-    const matchType = currentFilter === 'All' || i.type === currentFilter;
+    let matchType = true;
+    if (currentFilter === 'MyPosts') {
+      matchType = currentUser && (i.owner_id === currentUser.id || i.owner_email === currentUser.email);
+    } else if (currentFilter !== 'All') {
+      matchType = i.type === currentFilter;
+    }
+
     const matchCat = currentCategoryFilter === 'All' || i.category === currentCategoryFilter;
     const matchStatus =
       currentStatusFilter === 'All'
@@ -289,14 +295,24 @@ function renderItems() {
         : '🔴 LOST';
 
       const isOwner = currentUser && (currentUser.id === i.owner_id || currentUser.email === i.owner_email);
-      const ownerBadgeHtml = isOwner
-        ? `<span class="card-owner-badge">⭐ YOUR POST</span>`
-        : '';
-      const actionText = isOwner
-        ? 'Manage Your Post'
-        : i.type === 'Found'
-        ? 'Claim This Item'
-        : 'Connect & Help';
+      let ownerBadgeHtml = '';
+      let actionText = '';
+      let actionClass = '';
+
+      if (!currentUser) {
+        // Guest Visitor (Before Login)
+        actionText = '🔒 Sign in to Claim / Connect';
+        actionClass = 'action-guest';
+      } else if (isOwner) {
+        // Owner of this post (After Login)
+        ownerBadgeHtml = `<span class="card-owner-badge">⭐ YOUR POST</span>`;
+        actionText = '⚙ Manage Your Post';
+        actionClass = 'action-owner';
+      } else {
+        // Authenticated Campus Member (After Login)
+        actionText = i.type === 'Found' ? '🟢 Claim & Answer Proof' : '🔴 I Found This / Contact';
+        actionClass = 'action-member';
+      }
 
       return `
       <article class="item-card ${isResolved ? 'is-resolved' : ''} ${isOwner ? 'is-my-post' : ''}" data-item-id="${i.id}">
@@ -315,7 +331,7 @@ function renderItems() {
             <span>${i.date || ''}</span>
           </div>
         </div>
-        <div class="card-bottom">
+        <div class="card-bottom ${actionClass}">
           <span>${actionText}</span>
           <strong>→</strong>
         </div>
@@ -475,7 +491,17 @@ function openItemDetail(itemId) {
   const isOwner = currentUser && (currentUser.id === item.owner_id || currentUser.email === item.owner_email);
   const isAdmin = currentUser && currentUser.role === 'admin';
 
-  if (isOwner || isAdmin) {
+  if (!currentUser) {
+    actionsBox.innerHTML = `
+      <button class="button button-primary" id="btnDetailSignIn">
+        🔒 Sign in with College ID to Connect & Claim <span>→</span>
+      </button>
+    `;
+    document.querySelector('#btnDetailSignIn')?.addEventListener('click', () => {
+      itemDetailDialog.close();
+      authDialog.showModal();
+    });
+  } else if (isOwner || isAdmin) {
     actionsBox.innerHTML = `
       <button class="button button-secondary button-sm" id="btnToggleStatus">
         ${isResolved ? '↺ Reopen Listing' : '✓ Mark as Resolved'}
@@ -894,9 +920,18 @@ function syncUser() {
     if (metricReportsEl) metricReportsEl.textContent = myReportsCount;
     if (metricMatchesEl) metricMatchesEl.textContent = myMatchesCount;
     if (metricMessagesEl) metricMessagesEl.textContent = connections.length;
+
+    // Show My Posts filter pill in repository
+    const myPostsPill = document.querySelector('#myPostsFilterPill');
+    const filterMyPostsCount = document.querySelector('#filterMyPostsCount');
+    if (myPostsPill) myPostsPill.classList.remove('hidden');
+    if (filterMyPostsCount) filterMyPostsCount.textContent = myReportsCount;
   } else {
     guestHero?.classList.remove('hidden');
     userHero?.classList.add('hidden');
+
+    const myPostsPill = document.querySelector('#myPostsFilterPill');
+    if (myPostsPill) myPostsPill.classList.add('hidden');
   }
 
   // Re-render feed items to update owner badges and buttons
