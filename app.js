@@ -634,11 +634,12 @@ async function openMyReports() {
       container.innerHTML = userItems
         .map((it) => {
           const isResolved = it.status === 'Resolved';
+          const itDate = it.date || it.item_date || (it.created_at ? new Date(it.created_at + 'Z').toLocaleDateString() : 'Recent');
           return `
           <article class="my-report-card">
             <div class="my-report-info">
               <b>${escapeHtml(it.name)} (${escapeHtml(it.type)})</b>
-              <small>⌖ ${escapeHtml(it.location)} · ${it.date} · 💬 ${it.connections_count || 0} claims/matches</small>
+              <small>⌖ ${escapeHtml(it.location)} · ${escapeHtml(itDate)} · 💬 ${it.connections_count || 0} claims/matches</small>
             </div>
             <div class="my-report-actions">
               <button class="button button-sm button-secondary" data-my-toggle-id="${it.id}" data-current-status="${it.status}">
@@ -975,24 +976,61 @@ document.querySelector('#myReportsList')?.addEventListener('click', async (e) =>
   }
 });
 
-// Profile / Sign Out
-document.querySelector('#profileButton')?.addEventListener('click', () => {
-  if (currentUser?.role === 'admin') openAdmin();
-  else openMyReports();
+// User Profile & Account Dialog
+const userProfileDialog = document.querySelector('#userProfileDialog');
+
+function openUserProfile() {
+  if (!currentUser) {
+    authDialog.showModal();
+    return;
+  }
+  if (currentUser.role === 'admin') {
+    openAdmin();
+    return;
+  }
+
+  document.querySelector('#modalProfileName').textContent = currentUser.name;
+  document.querySelector('#modalProfileRole').textContent = currentUser.campus_role || 'Member';
+  document.querySelector('#modalProfileEmail').textContent = currentUser.email;
+  document.querySelector('#modalProfilePhone').textContent = currentUser.phone ? `📞 ${currentUser.phone}` : 'No phone number provided';
+  document.querySelector('#modalAvatarInitials').textContent = currentUser.name
+    .split(' ')
+    .map((x) => x[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+
+  userProfileDialog.showModal();
+}
+
+document.querySelector('#profileButton')?.addEventListener('click', openUserProfile);
+document.querySelector('#closeUserProfile')?.addEventListener('click', () => userProfileDialog.close());
+
+document.querySelector('#profileMyReportsBtn')?.addEventListener('click', () => {
+  userProfileDialog.close();
+  openMyReports();
 });
 
-document.querySelector('#closeAdmin')?.addEventListener('click', () => adminDialog.close());
+document.querySelector('#profileConnectionsBtn')?.addEventListener('click', () => {
+  userProfileDialog.close();
+  openConnections();
+});
 
-document.querySelector('#signOut')?.addEventListener('click', async () => {
+async function handleSignOut() {
   try {
     await api('/api/logout', { method: 'POST' });
   } catch (_) {}
   localStorage.removeItem('foundly_token');
   currentUser = null;
-  adminDialog.close();
+  userProfileDialog?.close();
+  adminDialog?.close();
   syncUser();
   notify('You have been signed out.');
-});
+}
+
+document.querySelector('#userSignOutBtn')?.addEventListener('click', handleSignOut);
+document.querySelector('#signOut')?.addEventListener('click', handleSignOut);
+document.querySelector('#closeAdmin')?.addEventListener('click', () => adminDialog.close());
 
 document.querySelector('#notifications')?.addEventListener('click', () => {
   if (currentUser) openConnections();
@@ -1040,6 +1078,9 @@ document.querySelector('#adminReports')?.addEventListener('click', async (e) => 
   try {
     const sessionData = await api('/api/session');
     currentUser = sessionData.user;
+    if (!currentUser) {
+      localStorage.removeItem('foundly_token');
+    }
     syncUser();
     checkPendingUpdates();
     await loadItems();

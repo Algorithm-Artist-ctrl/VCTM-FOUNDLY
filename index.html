@@ -347,6 +347,46 @@
       </div>
     </dialog>
 
+    <!-- User Profile & Account Dialog -->
+    <dialog id="userProfileDialog">
+      <div class="user-profile-panel">
+        <div class="modal-head">
+          <div>
+            <p class="eyebrow"><span></span> MY ACCOUNT</p>
+            <h2>Campus Profile</h2>
+          </div>
+          <button class="close" id="closeUserProfile" aria-label="Close">×</button>
+        </div>
+
+        <div class="profile-card-detail">
+          <div class="profile-avatar-large" id="modalAvatarInitials">TK</div>
+          <div class="profile-info-large">
+            <h3 id="modalProfileName">Tarun Kumar</h3>
+            <span class="pill-badge" id="modalProfileRole">Student</span>
+            <p id="modalProfileEmail">tarun@vctm.in</p>
+            <small id="modalProfilePhone">📞 +91 9876543210</small>
+          </div>
+        </div>
+
+        <div class="profile-actions-list">
+          <button type="button" class="profile-action-row" id="profileMyReportsBtn">
+            <span>📋 My Posted Reports</span>
+            <strong>→</strong>
+          </button>
+          <button type="button" class="profile-action-row" id="profileConnectionsBtn">
+            <span>💬 My Connections & Handoffs</span>
+            <strong>→</strong>
+          </button>
+        </div>
+
+        <div class="profile-footer">
+          <button type="button" class="button button-danger" id="userSignOutBtn">
+            🚪 Sign Out / Logout
+          </button>
+        </div>
+      </div>
+    </dialog>
+
     <!-- My Reports Dialog -->
     <dialog id="myReportsDialog">
       <div class="my-reports-panel">

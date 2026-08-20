@@ -335,7 +335,12 @@ class FoundlyHandler(SimpleHTTPRequestHandler):
 
                 sql += " ORDER BY i.id DESC"
                 rows = con.execute(sql, params).fetchall()
-                self.send_json({"items": [dict(r) for r in rows]})
+                items_list = []
+                for r in rows:
+                    d = dict(r)
+                    d["date"] = d.get("item_date") or ""
+                    items_list.append(d)
+                self.send_json({"items": items_list})
                 return
 
             if path.startswith("/api/items/"):
@@ -349,7 +354,9 @@ class FoundlyHandler(SimpleHTTPRequestHandler):
                 if not row:
                     self.send_error_json("Item not found", 404)
                     return
-                self.send_json({"item": dict(row)})
+                d = dict(row)
+                d["date"] = d.get("item_date") or ""
+                self.send_json({"item": d})
                 return
 
             if path == "/api/user/items":
@@ -363,7 +370,12 @@ class FoundlyHandler(SimpleHTTPRequestHandler):
                     WHERE i.owner_id = ?
                     ORDER BY i.id DESC
                 """, (user["id"],)).fetchall()
-                self.send_json({"items": [dict(r) for r in rows]})
+                items_list = []
+                for r in rows:
+                    d = dict(r)
+                    d["date"] = d.get("item_date") or ""
+                    items_list.append(d)
+                self.send_json({"items": items_list})
                 return
 
             if path == "/api/connections":
