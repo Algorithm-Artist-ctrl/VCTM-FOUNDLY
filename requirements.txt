@@ -1,0 +1,2 @@
+# VCTM Foundly runs on Python 3 standard library (sqlite3, http.server, etc.)
+# No external pip dependencies are required.

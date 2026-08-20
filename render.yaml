@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: vctm-foundly
+    env: python
+    buildCommand: ""
+    startCommand: python3 server.py
+    plan: free
