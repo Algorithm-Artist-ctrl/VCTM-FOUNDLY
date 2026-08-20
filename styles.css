@@ -601,34 +601,70 @@ h1 em { color: var(--coral); }
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  transition: 0.2s transform, 0.2s box-shadow;
+  transition: 0.25s transform cubic-bezier(0.16, 1, 0.3, 1), 0.25s box-shadow;
   cursor: pointer;
+  box-shadow: 0 4px 14px rgba(23, 38, 62, 0.04);
 }
 .item-card:hover {
-  transform: translateY(-4px);
+  transform: translateY(-5px);
   box-shadow: var(--shadow);
 }
 .card-media {
-  height: 180px;
-  background: #f3efe6;
+  height: 175px;
+  background: radial-gradient(circle, #fbf9f4 0%, #ece5d8 100%);
   position: relative;
   display: grid;
   place-items: center;
   overflow: hidden;
+  border-bottom: 1px solid var(--line);
 }
-.card-media img { width: 100%; height: 100%; object-fit: cover; }
-.card-media span { font-size: 52px; }
+.card-media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: 0.3s transform ease;
+}
+.item-card:hover .card-media img {
+  transform: scale(1.05);
+}
+.card-media .item-icon-display {
+  font-size: 52px;
+  filter: drop-shadow(0 6px 12px rgba(0, 0, 0, 0.09));
+  transition: 0.25s transform cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.item-card:hover .card-media .item-icon-display {
+  transform: scale(1.15) translateY(-3px);
+}
+
 .card-status-badge {
   position: absolute;
-  top: 12px;
-  right: 12px;
-  font: 800 9px 'DM Mono';
-  padding: 4px 8px;
-  border-radius: 5px;
+  top: 10px;
+  right: 10px;
+  font: 800 10px 'DM Mono', monospace;
+  padding: 4px 9px;
+  border-radius: 6px;
   letter-spacing: 0.5px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+  z-index: 2;
 }
-.card-status-badge.open { background: var(--green); color: #fff; }
-.card-status-badge.resolved { background: #627282; color: #fff; }
+.card-status-badge.badge-lost {
+  background: #fde8e5;
+  color: #c4321d;
+  border: 1px solid #f9c2ba;
+}
+.card-status-badge.badge-found {
+  background: #e6f4ea;
+  color: #137333;
+  border: 1px solid #ceead6;
+}
+.card-status-badge.badge-resolved {
+  background: #f1f3f4;
+  color: #5f6368;
+  border: 1px solid #dadce0;
+}
 
 .card-body { padding: 18px; flex: 1; }
 .card-body .category { font: 700 9px 'DM Mono'; letter-spacing: 1px; color: var(--muted); margin: 0 0 6px; }
@@ -643,6 +679,10 @@ h1 em { color: var(--coral); }
   font-weight: 700;
   color: var(--coral);
   background: #faf8f5;
+  transition: 0.15s background-color;
+}
+.item-card:hover .card-bottom {
+  background: #f5f1ea;
 }
 
 /* Safe Points Section */

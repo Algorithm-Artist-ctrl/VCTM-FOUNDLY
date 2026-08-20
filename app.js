@@ -96,9 +96,34 @@ const notify = (msg) => {
   notify._timer = setTimeout(() => toast.classList.remove('show'), 3500);
 };
 
-// Helper: Category Emoji Mapping
-const categoryEmoji = (cat) =>
-  ({
+// Helper: Smart Item Icon Detector based on name, category, and description
+const getItemIcon = (name = '', category = '', desc = '') => {
+  const text = `${name} ${category} ${desc}`.toLowerCase();
+  
+  if (text.includes('watch') || text.includes('titan') || text.includes('casio watch') || text.includes('smartwatch') || text.includes('rolex') || text.includes('fastrack')) return '⌚';
+  if (text.includes('glass') || text.includes('spec') || text.includes('sunglass') || text.includes('lens')) return '👓';
+  if (text.includes('bottle') || text.includes('sipper') || text.includes('flask') || text.includes('thermos')) return '🍶';
+  if (text.includes('earphone') || text.includes('airpod') || text.includes('headphone') || text.includes('earbud') || text.includes('audio') || text.includes('buds')) return '🎧';
+  if (text.includes('laptop') || text.includes('macbook') || text.includes('dell') || text.includes('hp') || text.includes('lenovo') || text.includes('asus') || text.includes('thinkpad')) return '💻';
+  if (text.includes('phone') || text.includes('iphone') || text.includes('samsung') || text.includes('oneplus') || text.includes('mobile') || text.includes('android')) return '📱';
+  if (text.includes('key') || text.includes('bike') || text.includes('car key') || text.includes('keychain') || text.includes('activa') || text.includes('honda')) return '🔑';
+  if (text.includes('wallet') || text.includes('purse') || text.includes('money') || text.includes('cash')) return '👛';
+  if (text.includes('id') || text.includes('card') || text.includes('admit') || text.includes('license') || text.includes('pan') || text.includes('aadhaar')) return '🪪';
+  if (text.includes('book') || text.includes('drawing') || text.includes('notebook') || text.includes('register') || text.includes('file') || text.includes('folder') || text.includes('notes')) return '📚';
+  if (text.includes('calculator') || text.includes('scientific') || text.includes('casio')) return '🔢';
+  if (text.includes('umbrella') || text.includes('raincoat')) return '☂️';
+  if (text.includes('bag') || text.includes('backpack') || text.includes('pouch') || text.includes('sack')) return '🎒';
+  if (text.includes('jacket') || text.includes('hoodie') || text.includes('sweater') || text.includes('shirt') || text.includes('coat') || text.includes('cap') || text.includes('hat') || text.includes('scarf')) return '🧥';
+  if (text.includes('ring') || text.includes('chain') || text.includes('necklace') || text.includes('jewel') || text.includes('earring') || text.includes('bangle') || text.includes('gold') || text.includes('silver')) return '💍';
+  if (text.includes('charger') || text.includes('cable') || text.includes('adapter') || text.includes('powerbank') || text.includes('cord')) return '🔌';
+  if (text.includes('mouse') || text.includes('keyboard') || text.includes('pen drive') || text.includes('pendrive') || text.includes('usb') || text.includes('hard disk')) return '🖱️';
+  if (text.includes('helmet')) return '🪖';
+  if (text.includes('shoe') || text.includes('sneaker') || text.includes('sandal') || text.includes('boots')) return '👟';
+  if (text.includes('bat') || text.includes('ball') || text.includes('racket') || text.includes('cricket') || text.includes('football') || text.includes('badminton')) return '🏏';
+  if (text.includes('lunch') || text.includes('tiffin') || text.includes('box')) return '🍱';
+  if (text.includes('pen') || text.includes('pencil') || text.includes('geometry') || text.includes('compass')) return '✏️';
+
+  return ({
     Electronics: '💻',
     Accessories: '👜',
     Keys: '🔑',
@@ -108,7 +133,8 @@ const categoryEmoji = (cat) =>
     Jewellery: '💍',
     'Sports & fitness': '🏏',
     Other: '📦',
-  }[cat] || '📦');
+  }[category] || '📦');
+};
 
 // -------------------------------------------------------------
 // PHOTO UPLOAD & RESIZE
@@ -240,16 +266,29 @@ function renderItems() {
     .map((i) => {
       const isResolved = i.status === 'Resolved';
       const hasImage = !!i.image_data;
+      const icon = getItemIcon(i.name, i.category, i.description);
       const mediaHtml = hasImage
         ? `<img src="${i.image_data}" alt="${escapeHtml(i.name)}" loading="lazy" />`
-        : `<span>${categoryEmoji(i.category)}</span>`;
+        : `<span class="item-icon-display">${icon}</span>`;
+
+      const badgeClass = isResolved
+        ? 'badge-resolved'
+        : i.type === 'Found'
+        ? 'badge-found'
+        : 'badge-lost';
+
+      const badgeText = isResolved
+        ? '✓ RESOLVED'
+        : i.type === 'Found'
+        ? '🟢 FOUND'
+        : '🔴 LOST';
 
       return `
       <article class="item-card ${isResolved ? 'is-resolved' : ''}" data-item-id="${i.id}">
         <div class="card-media">
           ${mediaHtml}
-          <span class="card-status-badge ${isResolved ? 'resolved' : 'open'}">
-            ${isResolved ? 'RESOLVED' : i.type.toUpperCase()}
+          <span class="card-status-badge ${badgeClass}">
+            ${badgeText}
           </span>
         </div>
         <div class="card-body">
@@ -316,8 +355,10 @@ async function loadSmartMatches() {
       .map((m) => {
         const l = m.lost_item;
         const f = m.found_item;
-        const lThumb = l.image_data ? `<img src="${l.image_data}" alt="${escapeHtml(l.name)}" />` : categoryEmoji(l.category);
-        const fThumb = f.image_data ? `<img src="${f.image_data}" alt="${escapeHtml(f.name)}" />` : categoryEmoji(f.category);
+        const lIcon = getItemIcon(l.name, l.category, l.description);
+        const fIcon = getItemIcon(f.name, f.category, f.description);
+        const lThumb = l.image_data ? `<img src="${l.image_data}" alt="${escapeHtml(l.name)}" />` : lIcon;
+        const fThumb = f.image_data ? `<img src="${f.image_data}" alt="${escapeHtml(f.name)}" />` : fIcon;
 
         return `
         <article class="match-pair-card">
@@ -401,7 +442,7 @@ function openItemDetail(itemId) {
   } else {
     imgElem.classList.add('hidden');
     emojiElem.classList.remove('hidden');
-    emojiElem.textContent = categoryEmoji(item.category);
+    emojiElem.textContent = getItemIcon(item.name, item.category, item.description);
   }
 
   // Proof Question
