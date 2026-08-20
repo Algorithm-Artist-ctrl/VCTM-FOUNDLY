@@ -959,10 +959,23 @@ dialog {
   border: 0;
   border-radius: 16px;
   padding: 0;
-  width: min(620px, calc(100% - 30px));
+  width: min(620px, calc(100vw - 32px));
+  max-height: min(88vh, 850px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   box-shadow: var(--shadow-lg);
   background: #fff;
-  overflow: hidden;
+  scrollbar-width: thin;
+}
+dialog::-webkit-scrollbar {
+  width: 6px;
+}
+dialog::-webkit-scrollbar-thumb {
+  background: #cbd2dc;
+  border-radius: 4px;
+}
+body.modal-open {
+  overflow: hidden !important;
 }
 dialog::backdrop { background: rgba(16, 29, 50, 0.55); backdrop-filter: blur(5px); }
 dialog form { padding: 28px; }

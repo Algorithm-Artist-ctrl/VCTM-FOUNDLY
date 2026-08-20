@@ -1114,6 +1114,7 @@ async function handleSignOut() {
     await api('/api/logout', { method: 'POST' });
   } catch (_) {}
   localStorage.removeItem('foundly_token');
+  localStorage.removeItem('foundly_user');
   currentUser = null;
   userProfileDialog?.close();
   adminDialog?.close();
@@ -1198,6 +1199,7 @@ if (authForm) {
       });
 
       if (res.token) localStorage.setItem('foundly_token', res.token);
+      if (res.user) localStorage.setItem('foundly_user', JSON.stringify(res.user));
       currentUser = res.user;
       authDialog.close();
       authForm.reset();
@@ -1431,21 +1433,46 @@ async function checkPendingUpdates() {
   } catch (_) {}
 }
 
-// Click-outside backdrop handler
+// Dialog backdrop and modal-open class management
+const updateModalOpenState = () => {
+  const hasOpen = Array.from(document.querySelectorAll('dialog')).some((d) => d.open);
+  document.body.classList.toggle('modal-open', hasOpen);
+};
+
 document.querySelectorAll('dialog').forEach((dlg) => {
   dlg.addEventListener('click', (e) => {
     if (e.target === dlg) dlg.close();
   });
+  dlg.addEventListener('close', updateModalOpenState);
+  dlg.addEventListener('cancel', updateModalOpenState);
+});
+
+const dialogObserver = new MutationObserver(updateModalOpenState);
+document.querySelectorAll('dialog').forEach((dlg) => {
+  dialogObserver.observe(dlg, { attributes: true, attributeFilter: ['open'] });
 });
 
 // -------------------------------------------------------------
 // INITIALIZATION
 // -------------------------------------------------------------
+// Instant cached session recovery on refresh to prevent login screen flicker
+try {
+  const cachedUserStr = localStorage.getItem('foundly_user');
+  if (cachedUserStr) {
+    currentUser = JSON.parse(cachedUserStr);
+    syncUser();
+  }
+} catch (_) {}
+
 (async () => {
   try {
     const sessionData = await api('/api/session');
-    currentUser = sessionData.user;
-    if (!currentUser) {
+    if (sessionData && sessionData.user) {
+      currentUser = sessionData.user;
+      localStorage.setItem('foundly_user', JSON.stringify(currentUser));
+    } else {
+      currentUser = null;
+      localStorage.removeItem('foundly_user');
       localStorage.removeItem('foundly_token');
     }
     syncUser();
