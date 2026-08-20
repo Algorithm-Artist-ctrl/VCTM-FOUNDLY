@@ -386,28 +386,33 @@ async function loadSmartMatches() {
     matches = data.matches || [];
     syncUserMetrics();
 
+    // For logged-in users, show matches relevant to their own reports; for guests, show campus matches
+    const relevantMatches = currentUser
+      ? matches.filter((m) => isItemOwner(m.lost_item) || isItemOwner(m.found_item))
+      : matches;
+
     const badge = document.querySelector('#navMatchBadge');
     if (badge) {
-      if (matches.length > 0) {
-        badge.textContent = matches.length;
+      if (relevantMatches.length > 0) {
+        badge.textContent = relevantMatches.length;
         badge.classList.remove('hidden');
       } else {
         badge.classList.add('hidden');
       }
     }
 
-    if (!matches.length) {
+    if (!relevantMatches.length) {
       container.innerHTML = `
         <div class="empty">
           <p style="font-size: 32px; margin-bottom: 8px;">⚡</p>
-          <b>No active match pairs currently detected</b>
-          <p style="margin-top: 5px;">When a lost item and a found item share matching keywords or categories, they will appear here automatically.</p>
+          <b>${currentUser ? 'No match alerts for your reports yet' : 'No active match pairs currently detected'}</b>
+          <p style="margin-top: 5px;">When you report a lost item and another student reports finding it, Foundly will automatically correlate the reports and alert you here.</p>
         </div>
       `;
       return;
     }
 
-    container.innerHTML = matches
+    container.innerHTML = relevantMatches
       .map((m) => {
         const l = m.lost_item;
         const f = m.found_item;
