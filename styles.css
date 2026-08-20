@@ -534,6 +534,41 @@ h1 em { color: var(--coral); }
 }
 
 /* S.T.S Brand Emblem & Logo */
+.sts-official-logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(255, 255, 255, 0.95);
+  padding: 6px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04);
+}
+.sts-official-logo svg {
+  flex-shrink: 0;
+  display: block;
+}
+.sts-text-wrap {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
+  text-align: left;
+}
+.sts-text-wrap b {
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 900;
+  color: var(--ink);
+  letter-spacing: 0.5px;
+}
+.sts-text-wrap small {
+  font-size: 9px;
+  color: var(--muted);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
 .sts-badge-brand {
   display: inline-flex;
   align-items: center;
@@ -582,7 +617,7 @@ h1 em { color: var(--coral); }
 }
 
 .bag-logo.sts-emblem {
-  width: 44px;
+  width: 48px;
   height: 22px;
   border-radius: 6px;
   background: linear-gradient(135deg, #ff6b4a 0%, #6366f1 100%);

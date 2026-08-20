@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>VCTM Foundly — Verified Campus Lost & Found</title>
-    <link rel="stylesheet" href="styles.css?v=5.1.0" />
+    <link rel="stylesheet" href="styles.css?v=6.0.0" />
   </head>
   <body>
     <div class="ambient ambient-one"></div>
@@ -818,23 +818,24 @@
 
     <footer>
       <p><b>VCTM Foundly</b> — Official Lost & Found Platform for Vivekananda College of Technology and Management.</p>
-      <div class="sts-footer-badge">
-        <svg width="20" height="20" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <div class="sts-official-logo">
+        <svg width="26" height="26" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
           <defs>
-            <linearGradient id="stsGradFoot" x1="0%" y1="0%" x2="100%" y2="100%">
+            <linearGradient id="stsFootGrad" x1="0%" y1="0%" x2="100%" y2="100%">
               <stop offset="0%" stop-color="#ff6b4a"/>
-              <stop offset="100%" stop-color="#6366f1"/>
+              <stop offset="50%" stop-color="#6366f1"/>
+              <stop offset="100%" stop-color="#0ea5e9"/>
             </linearGradient>
           </defs>
-          <rect x="2" y="2" width="28" height="28" rx="8" fill="url(#stsGradFoot)"/>
-          <text x="50%" y="55%" text-anchor="middle" dominant-baseline="middle" fill="#ffffff" font-size="9" font-family="'Space Grotesk', system-ui, sans-serif" font-weight="900" letter-spacing="0.5">STS</text>
+          <rect x="2" y="2" width="36" height="36" rx="10" fill="#0f172a" stroke="url(#stsFootGrad)" stroke-width="2"/>
+          <text x="50%" y="56%" text-anchor="middle" dominant-baseline="middle" fill="#ffffff" font-size="12" font-family="'Space Grotesk', system-ui, sans-serif" font-weight="900" letter-spacing="1">S.T.S</text>
         </svg>
-        <span>Powered by <b>S.T.S</b></span>
+        <span class="sts-text-wrap">Powered by <b>S.T.S</b> <small>Campus Network</small></span>
       </div>
     </footer>
 
     <!-- Supabase Cloud Client SDK -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="app.js?v=5.1.0"></script>
+    <script src="app.js?v=6.0.0"></script>
   </body>
 </html>
