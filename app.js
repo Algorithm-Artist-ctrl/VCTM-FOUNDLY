@@ -378,12 +378,10 @@ async function loadConnections() {
 // 2. RENDER LIVE SMART MATCHES
 // -------------------------------------------------------------
 async function loadSmartMatches() {
-  const container = document.querySelector('#matchesHomeGrid');
-  const matchesSection = document.querySelector('#matches');
-  if (!container || !matchesSection) return;
+  const container = document.querySelector('#userSmartMatchesContainer');
+  if (!container) return;
 
   if (!currentUser || currentUser.role === 'admin') {
-    matchesSection.classList.remove('has-matches');
     container.innerHTML = '';
     return;
   }
@@ -407,64 +405,78 @@ async function loadSmartMatches() {
     }
 
     if (relevantMatches.length === 0) {
-      matchesSection.classList.remove('has-matches');
       container.innerHTML = '';
       return;
     }
 
-    matchesSection.classList.add('has-matches');
-    container.innerHTML = relevantMatches
-      .map((m) => {
-        const l = m.lost_item;
-        const f = m.found_item;
-        const lIcon = getItemIcon(l.name, l.category, l.description);
-        const fIcon = getItemIcon(f.name, f.category, f.description);
-        const lThumb = l.image_data ? `<img src="${l.image_data}" alt="${escapeHtml(l.name)}" />` : lIcon;
-        const fThumb = f.image_data ? `<img src="${f.image_data}" alt="${escapeHtml(f.name)}" />` : fIcon;
-
-        return `
-        <article class="match-pair-card">
-          <!-- Lost Side -->
-          <div class="match-item-side">
-            <div class="match-thumb">${lThumb}</div>
-            <div class="match-item-details">
-              <span class="pill-badge" style="background:#fdeee9; color:var(--coral);">LOST ITEM</span>
-              <h4>${escapeHtml(l.name)}</h4>
-              <p>⌖ ${escapeHtml(l.location)}</p>
-              <small>Reported by ${escapeHtml(l.owner_name)} (${escapeHtml(l.owner_role)})</small>
-            </div>
+    container.innerHTML = `
+      <div class="matches-section" id="matches" style="margin-top: 32px;">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow"><span></span> AUTOMATED CORRELATION</p>
+            <h2>⚡ Live Smart Matches</h2>
+            <p class="section-subtext">Foundly detected potential matches for your lost or found reports.</p>
           </div>
+          <button class="button button-secondary button-sm" id="btnRefreshMatches">↺ Refresh</button>
+        </div>
+        <div id="matchesHomeGrid" class="matches-home-grid">
+          ${relevantMatches
+            .map((m) => {
+              const l = m.lost_item;
+              const f = m.found_item;
+              const lIcon = getItemIcon(l.name, l.category, l.description);
+              const fIcon = getItemIcon(f.name, f.category, f.description);
+              const lThumb = l.image_data ? `<img src="${l.image_data}" alt="${escapeHtml(l.name)}" />` : lIcon;
+              const fThumb = f.image_data ? `<img src="${f.image_data}" alt="${escapeHtml(f.name)}" />` : fIcon;
 
-          <!-- Center Match Meter -->
-          <div class="match-center-meter">
-            <span class="match-score-badge">⚡ ${m.score}% MATCH</span>
-            <small style="color:var(--muted); font-size:9px;">${escapeHtml(m.reasons.join(' · '))}</small>
-            <button class="button button-primary button-sm" data-match-connect-item="${f.id}" data-match-lost-id="${l.id}">
-              Connect & Reclaim 💬
-            </button>
-          </div>
+              return `
+              <article class="match-pair-card">
+                <!-- Lost Side -->
+                <div class="match-item-side">
+                  <div class="match-thumb">${lThumb}</div>
+                  <div class="match-item-details">
+                    <span class="pill-badge" style="background:#fdeee9; color:var(--coral);">LOST ITEM</span>
+                    <h4>${escapeHtml(l.name)}</h4>
+                    <p>⌖ ${escapeHtml(l.location)}</p>
+                    <small>Reported by ${escapeHtml(l.owner_name)} (${escapeHtml(l.owner_role)})</small>
+                  </div>
+                </div>
 
-          <!-- Found Side -->
-          <div class="match-item-side">
-            <div class="match-thumb">${fThumb}</div>
-            <div class="match-item-details">
-              <span class="pill-badge" style="background:#eaf5ef; color:var(--green);">FOUND ITEM</span>
-              <h4>${escapeHtml(f.name)}</h4>
-              <p>⌖ ${escapeHtml(f.location)}</p>
-              <small>Reported by ${escapeHtml(f.owner_name)} (${escapeHtml(f.owner_role)})</small>
-            </div>
-          </div>
-        </article>
-      `;
-      })
-      .join('');
+                <!-- Center Match Meter -->
+                <div class="match-center-meter">
+                  <span class="match-score-badge">⚡ ${m.score}% MATCH</span>
+                  <small style="color:var(--muted); font-size:9px;">${escapeHtml(m.reasons.join(' · '))}</small>
+                  <button class="button button-primary button-sm" data-match-connect-item="${f.id}" data-match-lost-id="${l.id}">
+                    Connect & Reclaim 💬
+                  </button>
+                </div>
+
+                <!-- Found Side -->
+                <div class="match-item-side">
+                  <div class="match-thumb">${fThumb}</div>
+                  <div class="match-item-details">
+                    <span class="pill-badge" style="background:#eaf5ef; color:var(--green);">FOUND ITEM</span>
+                    <h4>${escapeHtml(f.name)}</h4>
+                    <p>⌖ ${escapeHtml(f.location)}</p>
+                    <small>Reported by ${escapeHtml(f.owner_name)} (${escapeHtml(f.owner_role)})</small>
+                  </div>
+                </div>
+              </article>
+            `;
+            })
+            .join('')}
+        </div>
+      </div>
+    `;
+
+    document.querySelector('#btnRefreshMatches')?.addEventListener('click', loadSmartMatches);
   } catch (err) {
-    container.innerHTML = `<p class="empty">${err.message}</p>`;
+    container.innerHTML = '';
   }
 }
 
-document.querySelector('#btnRefreshMatches')?.addEventListener('click', loadSmartMatches);
-document.querySelector('#matchesHomeGrid')?.addEventListener('click', (e) => {
+// Global click delegation for match connect buttons
+document.addEventListener('click', (e) => {
   const btn = e.target.closest('[data-match-connect-item]');
   if (btn) {
     openConnection(Number(btn.dataset.matchConnectItem));
@@ -1062,14 +1074,15 @@ function syncUser() {
 
     if (isAdmin) {
       userHero?.classList.add('hidden');
-      matchesSection?.classList.remove('has-matches');
       adminHero?.classList.remove('hidden');
       itemsSection?.classList.remove('hidden');
+      itemsSection?.style.removeProperty('display');
       loadAdminDashboard();
     } else {
       adminHero?.classList.add('hidden');
       userHero?.classList.remove('hidden');
       itemsSection?.classList.remove('hidden');
+      itemsSection?.style.removeProperty('display');
       syncUserMetrics();
     }
 
@@ -1106,11 +1119,11 @@ function syncUser() {
     guestHero?.classList.remove('hidden');
     userHero?.classList.add('hidden');
     adminHero?.classList.add('hidden');
-    matchesSection?.classList.remove('has-matches');
     howItWorks?.classList.remove('hidden');
     safeZones?.classList.remove('hidden');
     quickActions?.classList.remove('hidden');
     itemsSection?.classList.add('hidden');
+    itemsSection?.style.setProperty('display', 'none', 'important');
 
     document.querySelectorAll('.guest-nav').forEach((el) => el.classList.remove('hidden'));
     document.querySelectorAll('.member-nav').forEach((el) => el.classList.add('hidden'));

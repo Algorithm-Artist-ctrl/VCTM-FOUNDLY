@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>VCTM Foundly — Verified Campus Lost & Found</title>
-    <link rel="stylesheet" href="styles.css?v=4.2.0" />
+    <link rel="stylesheet" href="styles.css?v=5.0.0" />
   </head>
   <body>
     <div class="ambient ambient-one"></div>
@@ -120,20 +120,8 @@
           </div>
         </div>
 
-        <!-- Student Smart Matches Section (Inside userHero) -->
-        <div class="matches-section" id="matches" style="margin-top: 32px;">
-          <div class="section-heading">
-            <div>
-              <p class="eyebrow"><span></span> AUTOMATED CORRELATION</p>
-              <h2>⚡ Live Smart Matches</h2>
-              <p class="section-subtext">Foundly scans active lost reports against found reports using category, location, and keyword similarity.</p>
-            </div>
-            <button class="button button-secondary button-sm" id="btnRefreshMatches">↺ Refresh</button>
-          </div>
-          <div id="matchesHomeGrid" class="matches-home-grid">
-            <!-- Dynamically populated -->
-          </div>
-        </div>
+        <!-- Dynamic Smart Matches Container (Only created when student has active matches) -->
+        <div id="userSmartMatchesContainer"></div>
       </section>
 
       <!-- Dedicated Campus Administrator Control Center (Only shown when role === 'admin') -->
@@ -332,7 +320,7 @@
       </section>
 
       <!-- Explore & Search Items Section (Only visible for authenticated members) -->
-      <section class="explore hidden" id="items">
+      <section class="explore hidden" id="items" style="display: none !important;">
         <div class="section-heading">
           <div>
             <p class="eyebrow"><span></span> LIVE REPOSITORY</p>
@@ -815,6 +803,6 @@
 
     <!-- Supabase Cloud Client SDK -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="app.js?v=4.2.0"></script>
+    <script src="app.js?v=5.0.0"></script>
   </body>
 </html>
