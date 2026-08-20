@@ -379,17 +379,21 @@ async function loadConnections() {
 // -------------------------------------------------------------
 async function loadSmartMatches() {
   const container = document.querySelector('#matchesHomeGrid');
+  const matchesSection = document.querySelector('#matches');
   if (!container) return;
+
+  if (!currentUser) {
+    matchesSection?.classList.add('hidden');
+    return;
+  }
 
   try {
     const data = await api('/api/matches');
     matches = data.matches || [];
     syncUserMetrics();
 
-    // For logged-in users, show matches relevant to their own reports; for guests, show campus matches
-    const relevantMatches = currentUser
-      ? matches.filter((m) => isItemOwner(m.lost_item) || isItemOwner(m.found_item))
-      : matches;
+    // Show matches relevant to this user's reports
+    const relevantMatches = matches.filter((m) => isItemOwner(m.lost_item) || isItemOwner(m.found_item));
 
     const badge = document.querySelector('#navMatchBadge');
     if (badge) {
@@ -405,7 +409,7 @@ async function loadSmartMatches() {
       container.innerHTML = `
         <div class="empty">
           <p style="font-size: 32px; margin-bottom: 8px;">⚡</p>
-          <b>${currentUser ? 'No match alerts for your reports yet' : 'No active match pairs currently detected'}</b>
+          <b>No match alerts for your reports yet</b>
           <p style="margin-top: 5px;">When you report a lost item and another student reports finding it, Foundly will automatically correlate the reports and alert you here.</p>
         </div>
       `;

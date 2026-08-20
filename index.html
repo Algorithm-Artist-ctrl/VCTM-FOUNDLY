@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>VCTM Foundly — Verified Campus Lost & Found</title>
-    <link rel="stylesheet" href="styles.css?v=3.6.0" />
+    <link rel="stylesheet" href="styles.css?v=3.7.0" />
   </head>
   <body>
     <div class="ambient ambient-one"></div>
@@ -187,8 +187,8 @@
         </button>
       </section>
 
-      <!-- Smart Matches Live Section -->
-      <section class="matches-section" id="matches">
+      <!-- Smart Matches Live Section (Only visible for authenticated members) -->
+      <section class="matches-section hidden" id="matches">
         <div class="section-heading">
           <div>
             <p class="eyebrow"><span></span> AUTOMATED CORRELATION</p>
@@ -202,8 +202,8 @@
         </div>
       </section>
 
-      <!-- Explore & Search Items Section -->
-      <section class="explore" id="items">
+      <!-- Explore & Search Items Section (Only visible for authenticated members) -->
+      <section class="explore hidden" id="items">
         <div class="section-heading">
           <div>
             <p class="eyebrow"><span></span> LIVE REPOSITORY</p>
@@ -686,6 +686,6 @@
 
     <!-- Supabase Cloud Client SDK -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="app.js?v=3.6.0"></script>
+    <script src="app.js?v=3.7.0"></script>
   </body>
 </html>
