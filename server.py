@@ -1,10 +1,12 @@
-"""VCTM Foundly - Bulletproof Enterprise Production Server.
+"""VCTM Foundly - Enterprise Campus Lost & Found System.
 
-Dual-mode architecture:
-1. If FastAPI & SQLAlchemy are installed: runs full ASGI multi-worker engine with /docs.
-2. If running in a minimal environment without pip dependencies: runs zero-dependency
-   multi-threaded production engine with identical REST API & Smart Matching.
-Guarantees 100% startup success on Render, Docker, and any cloud platform.
+Complete backend architecture:
+- REST API with Smart Matching correlation algorithm
+- Threaded in-app chat messenger & contact reveal
+- SQLite database with automatic migrations & seeding
+- Dual-mode authentication (Token + HTTP-Only Cookie)
+- Rate limiting & security headers
+- Zero-dependency reliability for 100% cloud uptime.
 """
 import csv
 import hashlib
@@ -17,7 +19,6 @@ import sqlite3
 import time
 from collections import defaultdict
 from datetime import datetime
-from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Optional
@@ -34,7 +35,7 @@ ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@foundly.test").lower()
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin123")
 ALLOW_ALL_DOMAINS = "*" in COLLEGE_DOMAINS or os.environ.get("ALLOW_ALL_DOMAINS", "").lower() in ("true", "1")
 
-# Rate limiting: 120 requests/minute per IP
+# In-memory rate limiting: 120 requests/minute per IP
 RATE_LIMITS = defaultdict(list)
 MAX_REQUESTS_PER_WINDOW = 120
 RATE_WINDOW_SECONDS = 60
@@ -50,7 +51,7 @@ def check_rate_limit(ip_address: str) -> bool:
 
 
 # -------------------------------------------------------------
-# DATABASE SCHEMA & MIGRATIONS (SQLite Engine)
+# DATABASE SCHEMA & MIGRATIONS
 # -------------------------------------------------------------
 def get_db():
     con = sqlite3.connect(DB_PATH)
@@ -110,7 +111,7 @@ def initialise_database():
             );
         """)
 
-        # Migrations for existing databases
+        # Migrations
         user_cols = [r[1] for r in con.execute("PRAGMA table_info(users)").fetchall()]
         if "phone" not in user_cols:
             con.execute("ALTER TABLE users ADD COLUMN phone TEXT")
@@ -135,16 +136,17 @@ def initialise_database():
         else:
             admin_id = admin["id"]
 
-        # Seed initial sample items if empty
+        # Seed sample items if database is empty
         item_count = con.execute("SELECT COUNT(*) AS c FROM items").fetchone()["c"]
         if item_count == 0:
             samples = [
-                ("Silver laptop sleeve", "Electronics", "Engineering block", "2026-08-20", "Left near the second-floor computer lab.", "Found", "Open", "What color is the zipper pull?", admin_id),
-                ("Brown leather wallet", "Accessories", "Student centre", "2026-08-20", "Contains ID card and student passes.", "Lost", "Open", "What initials are embossed inside?", admin_id),
-                ("Set of house keys", "Keys", "West parking", "2026-08-20", "Three silver keys on a yellow spiral keyring.", "Found", "Open", "Describe the small figurine attached.", admin_id),
-                ("Blue water bottle", "Other", "Sports complex", "2026-08-20", "Insulated bottle with college club stickers.", "Lost", "Open", "", admin_id),
-                ("Engineering drawing book", "Books & stationery", "Mechanical lab", "2026-08-19", "Contains ED assignment sheets with name on first page.", "Lost", "Resolved", "", admin_id),
-                ("Prescription glasses", "Accessories", "Seminar hall", "2026-08-18", "Black rectangular frame in a blue hard case.", "Found", "Open", "Brand of the case?", admin_id),
+                ("Silver Dell Inspiron Laptop", "Electronics", "Engineering Block Lab 204", "2026-08-20", "15-inch silver laptop with Python sticker on back.", "Lost", "Open", "What is the lockscreen wallpaper?", admin_id),
+                ("Dell Laptop in Black Sleeve", "Electronics", "Computer Lab 2nd Floor", "2026-08-20", "Found silver laptop inside a neoprene black sleeve.", "Found", "Open", "What brand is the charger?", admin_id),
+                ("Brown Leather Titan Wallet", "Accessories", "Student Centre Cafeteria", "2026-08-20", "Contains college library card and ID.", "Lost", "Open", "What initials are embossed inside?", admin_id),
+                ("Leather Wallet (Brown)", "Accessories", "Cafeteria Table 6", "2026-08-20", "Found brown gents wallet near water dispenser.", "Found", "Open", "Describe the card in front slot.", admin_id),
+                ("Set of 3 Bike Keys", "Keys", "West Campus Parking", "2026-08-20", "Honda bike key with a yellow spiral keychain.", "Found", "Open", "What color is the rubber cap?", admin_id),
+                ("Scientific Calculator Casio fx-991EX", "Electronics", "Mechanical Workshop", "2026-08-19", "Classwiz model with name written in marker.", "Lost", "Open", "What is written on the back cover?", admin_id),
+                ("Engineering Drawing Book", "Books & stationery", "Room 102", "2026-08-19", "Contains isometric and orthographic sheets.", "Lost", "Resolved", "", admin_id),
             ]
             for s in samples:
                 con.execute(
@@ -180,55 +182,103 @@ def is_college_email(email: str) -> bool:
 
 
 # -------------------------------------------------------------
-# AUTOMATED SMART MATCHING ENGINE
+# SMART MATCHING CORRELATION ALGORITHM
 # -------------------------------------------------------------
-def find_and_notify_matches(item_id: int, item_name: str, item_cat: str, item_loc: str, item_type: str, item_owner_id: int, con: sqlite3.Connection):
-    """When an item is reported, automatically find counterpart listings and notify the lost user!"""
-    opp_type = "Found" if item_type == "Lost" else "Lost"
-    words = re.findall(r"\b[a-zA-Z0-9]{3,}\b", f"{item_name} {item_loc}".lower())
-    stop_words = {"the", "and", "for", "with", "item", "lost", "found", "room", "near", "hall", "lab"}
-    keywords = [w for w in words if w not in stop_words]
+def extract_keywords(text: str):
+    words = re.findall(r"\b[a-zA-Z0-9]{3,}\b", text.lower())
+    stop_words = {"the", "and", "for", "with", "item", "lost", "found", "room", "near", "hall", "lab", "block", "floor"}
+    return set(w for w in words if w not in stop_words)
 
-    candidates = con.execute(
-        "SELECT * FROM items WHERE type = ? AND status = 'Open' AND owner_id != ?",
-        (opp_type, item_owner_id)
-    ).fetchall()
 
-    for cand in candidates:
-        cand_text = f"{cand['name']} {cand['location']} {cand['description'] or ''}".lower()
-        cat_match = (cand["category"] == item_cat and cand["category"] != "Other")
-        kw_match = any(kw in cand_text for kw in keywords) if keywords else False
+def calculate_match_score(lost_item: dict, found_item: dict):
+    """Calculates match confidence percentage (50% - 98%) between a lost and found item."""
+    score = 0
+    matched_reasons = []
 
-        if cat_match or kw_match:
-            lost_user_id = item_owner_id if item_type == "Lost" else cand["owner_id"]
-            finder_user_id = item_owner_id if item_type == "Found" else cand["owner_id"]
-            found_item_id = item_id if item_type == "Found" else cand["id"]
-            found_item_name = item_name if item_type == "Found" else cand["name"]
-            found_item_loc = item_loc if item_type == "Found" else cand["location"]
-            lost_item_name = item_name if item_type == "Lost" else cand["name"]
+    # Category match (+45 points)
+    if lost_item["category"] == found_item["category"] and lost_item["category"] != "Other":
+        score += 45
+        matched_reasons.append(f"Category: {lost_item['category']}")
+    elif lost_item["category"] == found_item["category"]:
+        score += 25
 
-            existing = con.execute(
-                "SELECT id FROM connections WHERE recipient_id = ? AND item_id = ?",
-                (lost_user_id, found_item_id)
-            ).fetchone()
+    # Title keyword overlap (up to +35 points)
+    lost_title_words = extract_keywords(lost_item["name"])
+    found_title_words = extract_keywords(found_item["name"])
+    title_overlap = lost_title_words.intersection(found_title_words)
+    if title_overlap:
+        score += min(35, len(title_overlap) * 18)
+        matched_reasons.append(f"Keywords: {', '.join(title_overlap)}")
 
-            if not existing:
-                msg = f"✦ Campus Match Alert: Someone reported finding '{found_item_name}' at '{found_item_loc}' matching your lost '{lost_item_name}'. Click to contact and reclaim!"
-                con.execute(
-                    "INSERT INTO connections (item_id, sender_id, recipient_id, message, status) VALUES (?, ?, ?, ?, 'Matched')",
-                    (found_item_id, finder_user_id, lost_user_id, msg)
-                )
+    # Location keyword overlap (up to +20 points)
+    lost_loc_words = extract_keywords(lost_item["location"])
+    found_loc_words = extract_keywords(found_item["location"])
+    loc_overlap = lost_loc_words.intersection(found_loc_words)
+    if loc_overlap:
+        score += min(20, len(loc_overlap) * 12)
+        matched_reasons.append(f"Location: {', '.join(loc_overlap)}")
+
+    # Description overlap
+    lost_desc_words = extract_keywords(lost_item.get("description") or "")
+    found_desc_words = extract_keywords(found_item.get("description") or "")
+    desc_overlap = lost_desc_words.intersection(found_desc_words)
+    if desc_overlap:
+        score += min(15, len(desc_overlap) * 8)
+
+    # Normalize score between 60% and 98%
+    if score >= 40:
+        confidence = min(98, 50 + int(score * 0.6))
+        return confidence, matched_reasons
+    return 0, []
+
+
+def get_all_smart_matches(con: sqlite3.Connection):
+    """Returns all active Lost <-> Found pairs with high match correlation."""
+    lost_items = con.execute("""
+        SELECT i.*, u.name AS owner_name, u.campus_role AS owner_role, u.email AS owner_email, u.phone AS owner_phone
+        FROM items i JOIN users u ON i.owner_id = u.id
+        WHERE i.type = 'Lost' AND i.status = 'Open'
+        ORDER BY i.id DESC
+    """).fetchall()
+
+    found_items = con.execute("""
+        SELECT i.*, u.name AS owner_name, u.campus_role AS owner_role, u.email AS owner_email, u.phone AS owner_phone
+        FROM items i JOIN users u ON i.owner_id = u.id
+        WHERE i.type = 'Found' AND i.status = 'Open'
+        ORDER BY i.id DESC
+    """).fetchall()
+
+    matches = []
+    for l in lost_items:
+        l_dict = dict(l)
+        l_dict["date"] = l_dict.get("item_date") or ""
+        for f in found_items:
+            f_dict = dict(f)
+            f_dict["date"] = f_dict.get("item_date") or ""
+            if l_dict["owner_id"] == f_dict["owner_id"]:
+                continue
+
+            score, reasons = calculate_match_score(l_dict, f_dict)
+            if score >= 60:
+                matches.append({
+                    "score": score,
+                    "reasons": reasons,
+                    "lost_item": l_dict,
+                    "found_item": f_dict,
+                })
+
+    matches.sort(key=lambda x: x["score"], reverse=True)
+    return matches
 
 
 # -------------------------------------------------------------
-# ZERO-DEPENDENCY HTTP REQUEST HANDLER (100% UPTIME ENGINE)
+# HTTP SERVER & API REQUEST HANDLER
 # -------------------------------------------------------------
 class FoundlyHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(ROOT), **kwargs)
 
     def log_message(self, format, *args):
-        # Concise logging
         pass
 
     def end_headers(self):
@@ -294,18 +344,28 @@ class FoundlyHandler(SimpleHTTPRequestHandler):
 
         con = get_db()
         try:
+            # 1. Session status
             if path == "/api/session":
                 user = self.get_current_user(con)
                 if not user:
-                    self.send_json({"user": None, "pending_count": 0})
+                    self.send_json({"user": None, "pending_count": 0, "matches_count": 0})
                     return
                 pending = con.execute(
                     "SELECT COUNT(*) AS c FROM connections WHERE recipient_id = ? AND status IN ('Pending', 'Matched')",
                     (user["id"],)
                 ).fetchone()["c"]
-                self.send_json({"user": user, "pending_count": pending})
+                all_matches = get_all_smart_matches(con)
+                user_matches = sum(1 for m in all_matches if m["lost_item"]["owner_id"] == user["id"] or m["found_item"]["owner_id"] == user["id"])
+                self.send_json({"user": user, "pending_count": pending, "matches_count": user_matches})
                 return
 
+            # 2. Smart Matches Hub API
+            if path == "/api/matches":
+                matches = get_all_smart_matches(con)
+                self.send_json({"matches": matches, "count": len(matches)})
+                return
+
+            # 3. Items list with search & filters
             if path == "/api/items":
                 search = query.get("search", [""])[0].strip().lower()
                 cat = query.get("category", ["All"])[0]
@@ -343,6 +403,7 @@ class FoundlyHandler(SimpleHTTPRequestHandler):
                 self.send_json({"items": items_list})
                 return
 
+            # 4. Item detail
             if path.startswith("/api/items/"):
                 item_id = int(path.split("/")[3])
                 row = con.execute("""
@@ -359,6 +420,7 @@ class FoundlyHandler(SimpleHTTPRequestHandler):
                 self.send_json({"item": d})
                 return
 
+            # 5. User's own items
             if path == "/api/user/items":
                 user = self.get_current_user(con)
                 if not user:
@@ -378,6 +440,7 @@ class FoundlyHandler(SimpleHTTPRequestHandler):
                 self.send_json({"items": items_list})
                 return
 
+            # 6. Connections & Messages
             if path == "/api/connections":
                 user = self.get_current_user(con)
                 if not user:
@@ -406,6 +469,7 @@ class FoundlyHandler(SimpleHTTPRequestHandler):
                 self.send_json({"connections": data})
                 return
 
+            # 7. Admin overview
             if path == "/api/admin/overview":
                 user = self.get_current_user(con)
                 if not user or user.get("role") != "admin":
@@ -426,6 +490,7 @@ class FoundlyHandler(SimpleHTTPRequestHandler):
                 self.send_json({"stats": stats, "items": items})
                 return
 
+            # 8. Admin CSV export
             if path == "/api/admin/export":
                 user = self.get_current_user(con)
                 if not user or user.get("role") != "admin":
@@ -450,15 +515,6 @@ class FoundlyHandler(SimpleHTTPRequestHandler):
                 self.wfile.write(csv_bytes)
                 return
 
-            if path == "/docs":
-                self.send_response(200)
-                self.send_header("Content-Type", "text/html; charset=utf-8")
-                docs_html = b"<!DOCTYPE html><html><head><title>VCTM Foundly API</title></head><body style='font-family:sans-serif;padding:40px;'><h2>VCTM Foundly REST API v2.1</h2><p>Active and running cleanly on Render.</p><ul><li>GET /api/session</li><li>GET /api/items</li><li>POST /api/items</li><li>POST /api/login</li><li>POST /api/register</li><li>GET /api/connections</li><li>GET /api/admin/overview</li><li>GET /api/admin/export</li></ul></body></html>"
-                self.send_header("Content-Length", str(len(docs_html)))
-                self.end_headers()
-                self.wfile.write(docs_html)
-                return
-
             # Default static file serving
             super().do_GET()
         finally:
@@ -479,6 +535,7 @@ class FoundlyHandler(SimpleHTTPRequestHandler):
 
         con = get_db()
         try:
+            # 1. User Registration
             if path == "/api/register":
                 name = (body.get("name") or "").strip()
                 email = (body.get("email") or "").strip().lower()
@@ -516,6 +573,7 @@ class FoundlyHandler(SimpleHTTPRequestHandler):
                 self.send_json({"user": user, "token": token}, 201, set_cookie=cookie)
                 return
 
+            # 2. User Login
             if path == "/api/login":
                 email = (body.get("email") or "").strip().lower()
                 password = body.get("password") or ""
@@ -540,6 +598,7 @@ class FoundlyHandler(SimpleHTTPRequestHandler):
                 self.send_json({"user": user, "token": token}, 200, set_cookie=cookie)
                 return
 
+            # 3. Logout
             if path == "/api/logout":
                 token = self.get_session_token()
                 if token:
@@ -549,6 +608,7 @@ class FoundlyHandler(SimpleHTTPRequestHandler):
                 self.send_json({"ok": True}, 200, set_cookie=cookie)
                 return
 
+            # 4. Password Reset
             if path == "/api/password/reset":
                 email = (body.get("email") or "").strip().lower()
                 new_pass = body.get("new_password") or ""
@@ -565,6 +625,7 @@ class FoundlyHandler(SimpleHTTPRequestHandler):
                 self.send_json({"ok": True, "message": "Password updated successfully. Please sign in."})
                 return
 
+            # 5. Create Item Report
             if path == "/api/items":
                 user = self.get_current_user(con)
                 if not user:
@@ -588,11 +649,11 @@ class FoundlyHandler(SimpleHTTPRequestHandler):
                         (name, cat, loc, date_str, desc, t, img, proof, user["id"])
                     )
                     item_id = cur.lastrowid
-                    find_and_notify_matches(item_id, name, cat, loc, t, user["id"], con)
 
                 self.send_json({"item": {"id": item_id}}, 201)
                 return
 
+            # 6. Update Item Status
             if path.startswith("/api/items/") and path.endswith("/status"):
                 user = self.get_current_user(con)
                 if not user:
@@ -615,6 +676,7 @@ class FoundlyHandler(SimpleHTTPRequestHandler):
                 self.send_json({"ok": True, "status": new_status})
                 return
 
+            # 7. Create Connection / Claim Request
             if path == "/api/connections":
                 user = self.get_current_user(con)
                 if not user:
@@ -640,6 +702,7 @@ class FoundlyHandler(SimpleHTTPRequestHandler):
                 self.send_json({"ok": True}, 201)
                 return
 
+            # 8. Accept / Decline Connection
             if path.startswith("/api/connections/") and path.endswith("/status"):
                 user = self.get_current_user(con)
                 if not user:
@@ -658,6 +721,7 @@ class FoundlyHandler(SimpleHTTPRequestHandler):
                 self.send_json({"ok": True})
                 return
 
+            # 9. Send Chat Message in Connection Thread
             if path.startswith("/api/connections/") and path.endswith("/message"):
                 user = self.get_current_user(con)
                 if not user:
@@ -668,7 +732,9 @@ class FoundlyHandler(SimpleHTTPRequestHandler):
                 if not reply_text:
                     self.send_error_json("Message cannot be empty")
                     return
-                conn_row = con.execute("SELECT * FROM connections WHERE id = ? AND (sender_id = ? OR recipient_id = ?)", (conn_id, user["id"], user["id"])).fetchone()
+                conn_row = con.execute("""
+                    SELECT * FROM connections WHERE id = ? AND (sender_id = ? OR recipient_id = ?)
+                """, (conn_id, user["id"], user["id"])).fetchone()
                 if not conn_row:
                     self.send_error_json("Conversation not found", 404)
                     return

@@ -3,228 +3,276 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>VCTM Foundly — Verified Campus Lost & Found</title>
+    <title>VCTM Foundly — Campus Lost & Found Hub</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <div class="ambient ambient-one"></div>
     <div class="ambient ambient-two"></div>
 
+    <!-- Top Navigation -->
     <header class="topbar">
-      <a class="brand" href="#home" aria-label="VCTM Foundly home">
+      <a class="brand" href="#feed" id="brandLogo" aria-label="VCTM Foundly Home">
         <span class="brand-mark">F</span>
         <span>VCTM Foundly</span>
       </a>
-      <nav aria-label="Primary navigation">
-        <a class="active" href="#discover">Discover</a>
-        <a href="#items">Browse</a>
-        <a href="#matches">Matches</a>
-        <a href="#how-it-works">How it works</a>
-        <button class="nav-btn hidden" id="openMyReports">My Reports</button>
-        <button class="nav-btn hidden" id="openConnections">
-          Connections <span class="nav-badge hidden" id="navConnBadge">0</span>
+
+      <!-- Primary Tab Navigation -->
+      <nav class="nav-tabs" aria-label="Primary navigation">
+        <button class="nav-tab active" data-tab="feed">
+          <span>🔍</span> Browse Feed
+        </button>
+        <button class="nav-tab" data-tab="matches">
+          <span>⚡</span> Smart Matches <span class="tab-badge hidden" id="matchBadge">0</span>
+        </button>
+        <button class="nav-tab" data-tab="my-reports" id="navMyReports">
+          <span>📋</span> My Reports
+        </button>
+        <button class="nav-tab" data-tab="messages" id="navMessages">
+          <span>💬</span> Messages <span class="tab-badge hidden" id="msgBadge">0</span>
+        </button>
+        <button class="nav-tab" data-tab="safe-points">
+          <span>🏛️</span> Safe Points
         </button>
       </nav>
+
       <div class="top-actions">
-        <button class="icon-button notification-button" id="notifications" aria-label="Notifications" title="View Notifications & Requests">
-          <span>⌁</span>
-          <i id="notifDot" class="hidden"></i>
+        <button class="button button-primary button-sm" id="btnQuickReport">
+          ＋ Report Item
         </button>
         <button class="sign-in" id="openAuth">Sign in</button>
-        <button class="profile hidden" id="profileButton">
+        <button class="profile hidden" id="profileButton" title="My Account">
           <span class="avatar" id="avatarInitials">TK</span>
           <span class="profile-copy">
-            <b id="profileName">Tarun Kumar</b>
-            <small id="profileRole">Member</small>
+            <b id="profileName">Campus User</b>
+            <small id="profileRole">Student</small>
           </span>
           <span class="chevron">⌄</span>
         </button>
       </div>
     </header>
 
-    <main id="home">
-      <!-- Hero Section -->
-      <section class="hero" id="discover">
-        <div class="hero-copy">
-          <p class="eyebrow"><span></span> VERIFIED VCTM CAMPUS COMMUNITY</p>
-          <h1>Lost something?<br /><em>We’ll help find it.</em></h1>
-          <p class="hero-text">A private, secure lost-and-found network for Vivekananda College students, faculty, staff and campus workers.</p>
-          <div class="hero-buttons">
-            <button class="button button-primary" data-open-report="Lost">Report a lost item <span>↗</span></button>
-            <button class="button button-secondary" data-open-report="Found">Report a found item <span>＋</span></button>
-            <a class="button button-outline" href="#items">Browse items <span>↓</span></a>
+    <main class="main-container">
+      <!-- ========================================================= -->
+      <!-- TAB 1: BROWSE FEED                                        -->
+      <!-- ========================================================= -->
+      <section class="tab-panel active" id="tab-feed">
+        <!-- Hero Banner -->
+        <section class="hero">
+          <div class="hero-copy">
+            <p class="eyebrow"><span></span> VERIFIED VCTM CAMPUS NETWORK</p>
+            <h1>Lost something?<br /><em>We’ll help reunite it.</em></h1>
+            <p class="hero-text">
+              A private, secure lost-and-found network for Vivekananda College students, faculty, and staff.
+            </p>
+            <div class="hero-buttons">
+              <button class="button button-primary" data-open-report="Lost">Report a Lost Item <span>↗</span></button>
+              <button class="button button-secondary" data-open-report="Found">Report a Found Item <span>＋</span></button>
+              <button class="button button-outline" id="btnJumpMatches">View Smart Matches <span>⚡</span></button>
+            </div>
+            <div class="trust">
+              <div class="stack"><span>AM</span><span>JD</span><span>SR</span><span>+</span></div>
+              <p><b>Institutional Verified</b> — Connect safely on campus</p>
+            </div>
           </div>
-          <div class="trust">
-            <div class="stack"><span>AM</span><span>JD</span><span>SR</span><span>+</span></div>
-            <p><b>Safe & Verified</b> — Only institutional members can connect</p>
-          </div>
-        </div>
 
-        <div class="hero-visual">
-          <div class="orbit orbit-a"></div>
-          <div class="orbit orbit-b"></div>
-          <div class="spotlight"></div>
-          <article class="featured-card">
-            <div class="featured-top">
-              <span class="found-pill">FOUND</span>
-              <span class="status-pill status-open">ACTIVE</span>
+          <div class="hero-visual">
+            <div class="live-pulse">
+              <span class="pulse-dot"></span>
+              <span id="heroStatLive">Active Campus Hub</span>
             </div>
-            <div class="item-illustration">
-              <div class="bag-handle"></div>
-              <div class="bag"><div class="bag-logo">N</div></div>
+            <div class="hero-card">
+              <div class="hero-card-header">
+                <span class="card-tag">LATEST REPORT</span>
+                <span class="card-time">Verified</span>
+              </div>
+              <div class="hero-card-body">
+                <h3>Silver Dell Laptop</h3>
+                <p>⌖ Engineering Block Lab 204</p>
+              </div>
+              <div class="hero-card-footer">
+                <span class="match-score">96% Smart Match</span>
+                <span class="category-pill">Electronics</span>
+              </div>
             </div>
-            <p class="category">ACCESSORIES</p>
-            <h3>Black travel backpack</h3>
-            <p class="place">⌖ Central Library · Today</p>
-            <div class="featured-footer">
-              <span>Photo Verified</span>
-              <button class="text-link" data-open-report="Found">Report Found →</button>
-            </div>
-          </article>
-          <div class="floating-card match-card">
-            <span class="sparkle">✦</span>
-            <div><small>SMART MATCH</small><b>Instant Alert</b></div>
           </div>
-          <div class="floating-card location-card">
-            <span>⌖</span>
-            <div><small>LOCATION</small><b>Campus Block</b></div>
+        </section>
+
+        <!-- Search, Categories, and Filters Toolbar -->
+        <section class="search-section">
+          <div class="search-toolbar">
+            <div class="search-box">
+              <span class="search-icon">🔍</span>
+              <input type="search" id="searchInput" placeholder="Search by item name, brand, location, keywords..." autocomplete="off" />
+              <button class="clear-search hidden" id="clearSearch" aria-label="Clear search">✕</button>
+            </div>
+            <div class="filter-group">
+              <select id="categoryFilter" class="select-filter" aria-label="Filter by Category">
+                <option value="All">All Categories</option>
+                <option value="Electronics">Electronics</option>
+                <option value="Accessories">Accessories</option>
+                <option value="Keys">Keys</option>
+                <option value="Documents">Documents & IDs</option>
+                <option value="Clothing">Clothing</option>
+                <option value="Books & stationery">Books & Stationery</option>
+                <option value="Jewellery">Jewellery</option>
+                <option value="Sports & fitness">Sports & Fitness</option>
+                <option value="Other">Other</option>
+              </select>
+              <select id="statusFilter" class="select-filter" aria-label="Filter by Status">
+                <option value="Open">Active Only</option>
+                <option value="Resolved">Resolved / Returned</option>
+                <option value="All">All Reports</option>
+              </select>
+            </div>
           </div>
-        </div>
+
+          <div class="type-filter-bar">
+            <button class="filter-pill active" data-filter="All">All Items</button>
+            <button class="filter-pill" data-filter="Lost">Lost Items</button>
+            <button class="filter-pill" data-filter="Found">Found Items</button>
+          </div>
+        </section>
+
+        <!-- Items Grid -->
+        <section class="items-section">
+          <div class="items-grid" id="itemsGrid">
+            <!-- Dynamically populated -->
+          </div>
+        </section>
       </section>
 
-      <!-- Quick Actions Grid -->
-      <section class="quick-actions">
-        <button data-open-report="Lost">
-          <span class="quick-icon rose">⌕</span>
-          <span><b>I lost something</b><small>Post a lost report with photo & secret proof</small></span>
-          <strong>→</strong>
-        </button>
-        <button data-open-report="Found">
-          <span class="quick-icon mint">⌁</span>
-          <span><b>I found something</b><small>Help reunite it safely with the owner</small></span>
-          <strong>→</strong>
-        </button>
-        <button id="quickMyReports">
-          <span class="quick-icon purple">✦</span>
-          <span><b>My Active Reports</b><small>Manage reports, track claims & resolve items</small></span>
-          <strong>→</strong>
-        </button>
-      </section>
-
-      <!-- Explore & Search Items Section -->
-      <section class="explore" id="items">
-        <div class="section-heading">
+      <!-- ========================================================= -->
+      <!-- TAB 2: SMART MATCHES HUB                                  -->
+      <!-- ========================================================= -->
+      <section class="tab-panel" id="tab-matches">
+        <div class="panel-header">
           <div>
-            <p class="eyebrow"><span></span> LIVE REPOSITORY</p>
-            <h2>Campus Lost & Found Reports</h2>
+            <p class="eyebrow"><span></span> AUTOMATED CORRELATION</p>
+            <h2>⚡ Live Smart Matches Hub</h2>
+            <p class="panel-desc">
+              Foundly automatically compares all active Lost reports against Found reports across VCTM campus using category, location, and keyword analysis.
+            </p>
           </div>
-          <div class="heading-actions">
-            <button class="button button-sm button-primary" data-open-report="Lost">＋ New Report</button>
-          </div>
+          <button class="button button-secondary button-sm" id="btnRefreshMatches">↺ Refresh Matches</button>
         </div>
 
-        <div class="filters">
-          <label class="search">
-            <span>⌕</span>
-            <input id="searchInput" placeholder="Search by title, location, description, or keyword…" />
-            <button id="clearSearch" class="clear-search hidden" type="button" aria-label="Clear search">×</button>
-          </label>
-          
-          <div class="filter-group">
-            <button class="filter active" data-filter="All">All</button>
-            <button class="filter" data-filter="Lost">Lost</button>
-            <button class="filter" data-filter="Found">Found</button>
-          </div>
-
-          <label class="select-filter">
-            <span>Category:</span>
-            <select id="categoryFilter">
-              <option value="All">All categories</option>
-              <option>Electronics</option>
-              <option>Accessories</option>
-              <option>Keys</option>
-              <option>Documents</option>
-              <option>Clothing</option>
-              <option>Books & stationery</option>
-              <option>Jewellery</option>
-              <option>Sports & fitness</option>
-              <option>Other</option>
-            </select>
-          </label>
-
-          <label class="select-filter">
-            <span>Status:</span>
-            <select id="statusFilter">
-              <option value="All">All (Open & Resolved)</option>
-              <option value="Open" selected>Open / Active only</option>
-              <option value="Resolved">Resolved items</option>
-            </select>
-          </label>
-        </div>
-
-        <div class="items-grid" id="itemsGrid"></div>
-      </section>
-
-      <!-- Smart Matching Banner -->
-      <section class="match-section" id="matches">
-        <div>
-          <p class="eyebrow"><span></span> SMART MATCHING SYSTEM</p>
-          <h2>Instant recognition.<br /><em>Safe campus reunions.</em></h2>
-          <p>Foundly cross-references categories, locations, and descriptions across active Lost and Found posts to help you recover your valuables rapidly and safely.</p>
-          <button class="button button-dark" data-open-report="Lost">Post your report now <span>→</span></button>
-        </div>
-        <div class="match-visual">
-          <div class="match-ring ring-1"></div>
-          <div class="match-ring ring-2"></div>
-          <div class="match-center">✦<small>SAFE<br />REUNION</small></div>
-          <article class="mini-item mini-left">
-            <span class="mini-icon">💻</span>
-            <b>Laptop Sleeve</b>
-            <small>Lost · Engineering block</small>
-          </article>
-          <article class="mini-item mini-right">
-            <span class="mini-icon">💻</span>
-            <b>Laptop Sleeve</b>
-            <small>Found · Lab 204</small>
-          </article>
-          <div class="match-line"><i></i><b>MATCH</b></div>
+        <div id="matchesContainer" class="matches-grid">
+          <!-- Dynamically populated -->
         </div>
       </section>
 
-      <!-- How It Works -->
-      <section class="steps" id="how-it-works">
-        <p class="eyebrow"><span></span> STEP-BY-STEP WORKFLOW</p>
-        <h2>How VCTM Foundly works</h2>
-        <div class="steps-grid">
-          <article>
-            <span>01</span>
-            <h3>Post with Details & Photo</h3>
-            <p>Describe your lost or found item, upload an image, and optionally set a secret proof question.</p>
+      <!-- ========================================================= -->
+      <!-- TAB 3: MY REPORTS DASHBOARD                               -->
+      <!-- ========================================================= -->
+      <section class="tab-panel" id="tab-my-reports">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow"><span></span> MY DASHBOARD</p>
+            <h2>📋 My Posted Reports</h2>
+            <p class="panel-desc">
+              Manage your active and resolved campus reports. Once an item is returned, mark it as Resolved.
+            </p>
+          </div>
+          <button class="button button-primary button-sm" data-open-report="Lost">＋ Create New Report</button>
+        </div>
+
+        <div id="myReportsContainer" class="my-reports-grid">
+          <!-- Dynamically populated -->
+        </div>
+      </section>
+
+      <!-- ========================================================= -->
+      <!-- TAB 4: MESSAGES & CLAIM INBOX                             -->
+      <!-- ========================================================= -->
+      <section class="tab-panel" id="tab-messages">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow"><span></span> CAMPUS MESSENGER</p>
+            <h2>💬 Messages & Connection Requests</h2>
+            <p class="panel-desc">
+              Communicate securely with campus finders and claimants. Coordinate safe handoffs on campus.
+            </p>
+          </div>
+        </div>
+
+        <div class="inbox-container">
+          <div class="inbox-sidebar" id="inboxConversationsList">
+            <!-- Dynamically populated list of active threads -->
+          </div>
+          <div class="inbox-chat-pane" id="inboxChatPane">
+            <div class="empty-chat-state">
+              <p style="font-size: 32px; margin-bottom: 8px;">💬</p>
+              <b>Select a conversation</b>
+              <p>Choose an incoming claim or match from the left to start chatting and arrange a safe return.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========================================================= -->
+      <!-- TAB 5: CAMPUS SAFE POINTS                                 -->
+      <!-- ========================================================= -->
+      <section class="tab-panel" id="tab-safe-points">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow"><span></span> CAMPUS SECURITY & DROP-OFFS</p>
+            <h2>🏛️ Verified Campus Safe Handoff Points</h2>
+            <p class="panel-desc">
+              Always hand over high-value items (laptops, phones, wallets) at official supervised campus desks.
+            </p>
+          </div>
+        </div>
+
+        <div class="safe-points-grid">
+          <article class="safe-point-card">
+            <span class="safe-icon">🛡️</span>
+            <div class="safe-point-info">
+              <h3>Main Gate Security Desk</h3>
+              <p class="zone">Main Entrance · Ground Floor</p>
+              <p class="hours">⏰ Open 24/7 · Security Guard on Duty</p>
+              <small>Recommended for vehicles, keys, and after-hours collection.</small>
+            </div>
           </article>
-          <article>
-            <span>02</span>
-            <h3>Send a Safe Connection Request</h3>
-            <p>Find a match and request to connect. Direct contact information remains hidden until verified.</p>
+
+          <article class="safe-point-card">
+            <span class="safe-icon">📚</span>
+            <div class="safe-point-info">
+              <h3>Central Library Circulation Counter</h3>
+              <p class="zone">Academic Block A · 1st Floor</p>
+              <p class="hours">⏰ 8:30 AM – 7:00 PM (Mon – Sat)</p>
+              <small>Recommended for books, calculators, stationery, and laptops.</small>
+            </div>
           </article>
-          <article>
-            <span>03</span>
-            <h3>Verify & Handover</h3>
-            <p>The reporter approves the request, coordinates handoff on campus, and marks the report as Resolved.</p>
+
+          <article class="safe-point-card">
+            <span class="safe-icon">🏢</span>
+            <div class="safe-point-info">
+              <h3>Student Affairs & Council Office</h3>
+              <p class="zone">Student Centre · 2nd Floor</p>
+              <p class="hours">⏰ 9:00 AM – 5:00 PM (Mon – Fri)</p>
+              <small>Recommended for student ID cards, wallets, and wearable accessories.</small>
+            </div>
+          </article>
+
+          <article class="safe-point-card">
+            <span class="safe-icon">💻</span>
+            <div class="safe-point-info">
+              <h3>Central Computer Lab Helpdesk</h3>
+              <p class="zone">IT & Engineering Block · Room 204</p>
+              <p class="hours">⏰ 9:00 AM – 6:00 PM</p>
+              <small>Recommended for electronics, flash drives, chargers, and headphones.</small>
+            </div>
           </article>
         </div>
       </section>
     </main>
 
-    <footer>
-      <a class="brand" href="#home">
-        <span class="brand-mark">F</span>
-        <span>VCTM Foundly</span>
-      </a>
-      <p>Vivekananda College of Technology and Management — Campus Safety & Item Recovery Network.</p>
-      <span>© 2026 VCTM</span>
-    </footer>
+    <!-- ========================================================= -->
+    <!-- MODALS & DIALOGS                                          -->
+    <!-- ========================================================= -->
 
-    <!-- Report Modal Dialog -->
+    <!-- Report Item Dialog -->
     <dialog id="reportDialog">
       <form id="reportForm" method="dialog">
         <div class="modal-head">
@@ -254,16 +302,16 @@
               <option value="Keys">Keys</option>
               <option value="Documents">Documents & ID Cards</option>
               <option value="Clothing">Clothing</option>
-              <option value="Books & stationery">Books & stationery</option>
+              <option value="Books & stationery">Books & Stationery</option>
               <option value="Jewellery">Jewellery</option>
-              <option value="Sports & fitness">Sports & fitness</option>
+              <option value="Sports & fitness">Sports & Fitness</option>
               <option value="Other" selected>Other</option>
             </select>
           </label>
 
           <label>
             Campus Location *
-            <input required name="location" placeholder="e.g. Mechanical Lab, 2nd Floor Library" maxlength="80" />
+            <input required name="location" placeholder="e.g. Computer Lab 204, Library 1st Floor..." maxlength="80" />
           </label>
 
           <label class="full">
@@ -278,7 +326,7 @@
 
           <!-- Proof Question (Verification Secret) -->
           <label class="full">
-            Secret Proof Question <small>(Optional — test claimers)</small>
+            Secret Proof Question <small>(Optional — test claimers before handoff)</small>
             <input name="proof_question" placeholder="e.g. 'What image is on the lock screen?' or 'What keychain is attached?'" maxlength="120" />
           </label>
 
@@ -304,7 +352,7 @@
       </form>
     </dialog>
 
-    <!-- Item Detail Modal Dialog -->
+    <!-- Item Detail Lightbox Modal -->
     <dialog id="itemDetailDialog">
       <div class="item-detail-panel">
         <div class="modal-head">
@@ -347,6 +395,35 @@
       </div>
     </dialog>
 
+    <!-- Safe Connection & Claim Dialog -->
+    <dialog id="connectDialog">
+      <form id="connectForm" method="dialog">
+        <div class="modal-head">
+          <div>
+            <p class="eyebrow"><span></span> DIRECT CLAIM / MESSAGE</p>
+            <h2>Connect about this item</h2>
+          </div>
+          <button class="close" value="cancel" formnovalidate aria-label="Close">×</button>
+        </div>
+        <p class="connection-copy">Send a direct message or claim answer to the reporter. Arrange a safe pickup at a campus desk.</p>
+        <input type="hidden" name="itemId" />
+        
+        <div id="connectProofPrompt" class="connect-proof-prompt hidden">
+          <b>🔒 Reporter's Verification Question:</b>
+          <p id="connectProofQuestionText"></p>
+        </div>
+
+        <label class="connection-message">
+          Your Verification Message & Handoff Proposal *
+          <textarea name="message" required maxlength="400" placeholder="Provide proof/answers to identify this item, and suggest an official campus location to meet (e.g. Central Library Helpdesk)."></textarea>
+        </label>
+        <div class="modal-footer">
+          <button class="button button-secondary" value="cancel" formnovalidate>Cancel</button>
+          <button class="button button-primary" value="default" type="submit">Send Message <span>→</span></button>
+        </div>
+      </form>
+    </dialog>
+
     <!-- User Profile & Account Dialog -->
     <dialog id="userProfileDialog">
       <div class="user-profile-panel">
@@ -374,7 +451,7 @@
             <strong>→</strong>
           </button>
           <button type="button" class="profile-action-row" id="profileConnectionsBtn">
-            <span>💬 My Connections & Handoffs</span>
+            <span>💬 My Messages & Handoffs</span>
             <strong>→</strong>
           </button>
         </div>
@@ -387,30 +464,15 @@
       </div>
     </dialog>
 
-    <!-- My Reports Dialog -->
-    <dialog id="myReportsDialog">
-      <div class="my-reports-panel">
-        <div class="modal-head">
-          <div>
-            <p class="eyebrow"><span></span> MY DASHBOARD</p>
-            <h2>My Posted Reports</h2>
-          </div>
-          <button class="close" id="closeMyReports" aria-label="Close">×</button>
-        </div>
-        <p class="connection-copy">Manage your active posts. Mark items as Resolved once returned to their rightful owner.</p>
-        <div id="myReportsList" class="my-reports-list"></div>
-      </div>
-    </dialog>
-
     <!-- Auth Dialog (Sign In / Register) -->
     <dialog id="authDialog">
       <div class="auth-panel">
         <button class="auth-close" id="closeAuthBtn" aria-label="Close" title="Back to website">✕</button>
         <div class="auth-intro">
-          <a class="brand" href="#home"><span class="brand-mark">F</span><span>VCTM Foundly</span></a>
+          <a class="brand" href="#feed"><span class="brand-mark">F</span><span>VCTM Foundly</span></a>
           <p class="eyebrow"><span></span> VERIFIED ACCESS</p>
           <h2>Every reunion<br /><em>starts here.</em></h2>
-          <p>Foundly is a secure, private network for Vivekananda College of Technology and Management. Sign in with your institutional email to report and claim lost items.</p>
+          <p>Foundly is a private, secure network for Vivekananda College of Technology and Management. Sign in with your institutional email to report and claim lost items.</p>
           <div class="campus-badge">✓ Students · Faculty · Staff · Campus workers</div>
         </div>
         <div class="auth-form-wrap">
@@ -476,7 +538,7 @@
           </label>
           <label class="full">
             New Password (min 6 characters) *
-            <input required name="newPassword" type="password" minlength="6" placeholder="New secure password" />
+            <input required name="newPassword" type="password" minlength="6" placeholder="At least 6 characters" />
           </label>
         </div>
         <p class="auth-error" id="resetPassError"></p>
@@ -485,50 +547,6 @@
           <button class="button button-primary" value="default" type="submit">Update Password <span>→</span></button>
         </div>
       </form>
-    </dialog>
-
-    <!-- Safe Connection Dialog -->
-    <dialog id="connectDialog">
-      <form id="connectForm" method="dialog">
-        <div class="modal-head">
-          <div>
-            <p class="eyebrow"><span></span> SAFE CONNECTION</p>
-            <h2>Connect about this item</h2>
-          </div>
-          <button class="close" value="cancel" formnovalidate aria-label="Close">×</button>
-        </div>
-        <p class="connection-copy">Send a verified claim or connection request to the reporter. Contact details stay private until they accept.</p>
-        <input type="hidden" name="itemId" />
-        
-        <div id="connectProofPrompt" class="connect-proof-prompt hidden">
-          <b>🔒 Reporter's Proof Question:</b>
-          <p id="connectProofQuestionText"></p>
-        </div>
-
-        <label class="connection-message">
-          Your Message & Verification Details *
-          <textarea name="message" required maxlength="400" placeholder="Explain why you think this item is yours (or how you found it), provide details/answers, and suggest a safe campus handoff location."></textarea>
-        </label>
-        <div class="modal-footer">
-          <button class="button button-secondary" value="cancel" formnovalidate>Cancel</button>
-          <button class="button button-primary" value="default" type="submit">Send Request <span>→</span></button>
-        </div>
-      </form>
-    </dialog>
-
-    <!-- My Connections Dialog -->
-    <dialog id="connectionsDialog">
-      <div class="connections-panel">
-        <div class="modal-head">
-          <div>
-            <p class="eyebrow"><span></span> MY CONNECTIONS</p>
-            <h2>Requests & Campus Handoffs</h2>
-          </div>
-          <button class="close" id="closeConnections" aria-label="Close">×</button>
-        </div>
-        <p class="connection-copy">Review incoming claim requests. Once accepted, both verified members will see contact details to arrange a safe handoff.</p>
-        <div id="connectionsList"></div>
-      </div>
     </dialog>
 
     <!-- Admin Console Dialog -->
@@ -563,10 +581,14 @@
       </div>
     </dialog>
 
-    <!-- Toast Notification Container -->
-    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <!-- Toast Notification -->
+    <div id="toast" class="toast">Notification message</div>
+
+    <footer class="footer">
+      <p><b>VCTM Foundly</b> — Official Lost & Found Platform for Vivekananda College of Technology and Management.</p>
+      <span>Verified Institutional Network</span>
+    </footer>
 
     <script src="app.js"></script>
   </body>
 </html>
-

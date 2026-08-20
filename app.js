@@ -1,17 +1,19 @@
 /**
- * VCTM Foundly - Production Campus Lost & Found Client Application.
- * Full-featured: Dual Auth Token/Cookie, Auto Smart Matching, Direct Contacts, In-App Chat,
- * Photo Canvas Optimizer, Item Lifecycle, and Admin CSV Tools.
+ * VCTM Foundly - Enterprise Campus Lost & Found Client.
+ * Tabbed Hub: Feed, Smart Matches, My Reports, Messenger Inbox, and Safe Points.
  */
 
 let items = [];
+let matches = [];
+let connections = [];
 let currentUser = null;
 let currentFilter = 'All';
 let currentStatusFilter = 'Open';
 let currentCategoryFilter = 'All';
+let currentTab = 'feed';
+let activeChatConnectionId = null;
 let reportType = 'Lost';
 let authMode = 'login';
-let currentDetailItem = null;
 let currentUploadedImageBase64 = null;
 
 // DOM Elements
@@ -26,14 +28,13 @@ const toast = document.querySelector('#toast');
 const reportDialog = document.querySelector('#reportDialog');
 const reportForm = document.querySelector('#reportForm');
 const itemDetailDialog = document.querySelector('#itemDetailDialog');
-const authDialog = document.querySelector('#authDialog');
-const authForm = document.querySelector('#authForm');
-const resetPasswordDialog = document.querySelector('#resetPasswordDialog');
-const resetPasswordForm = document.querySelector('#resetPasswordForm');
 const connectDialog = document.querySelector('#connectDialog');
 const connectForm = document.querySelector('#connectForm');
-const connectionsDialog = document.querySelector('#connectionsDialog');
-const myReportsDialog = document.querySelector('#myReportsDialog');
+const authDialog = document.querySelector('#authDialog');
+const authForm = document.querySelector('#authForm');
+const userProfileDialog = document.querySelector('#userProfileDialog');
+const resetPasswordDialog = document.querySelector('#resetPasswordDialog');
+const resetPasswordForm = document.querySelector('#resetPasswordForm');
 const adminDialog = document.querySelector('#adminDialog');
 
 // Photo Upload Elements
@@ -109,20 +110,36 @@ const categoryEmoji = (cat) =>
     Other: '📦',
   }[cat] || '📦');
 
-// Helper: Category Tone Class
-const categoryTone = (cat) =>
-  ({
-    Electronics: 'tone-b',
-    Accessories: 'tone-a',
-    Keys: 'tone-c',
-    Documents: 'tone-d',
-    Clothing: 'tone-d',
-    'Books & stationery': 'tone-b',
-    Jewellery: 'tone-c',
-    'Sports & fitness': 'tone-c',
-  }[cat] || 'tone-a');
+// -------------------------------------------------------------
+// TAB SWITCHING & ROUTING
+// -------------------------------------------------------------
+function switchTab(tabId) {
+  currentTab = tabId;
+  document.querySelectorAll('.nav-tab').forEach((b) => {
+    b.classList.toggle('active', b.dataset.tab === tabId);
+  });
+  document.querySelectorAll('.tab-panel').forEach((p) => {
+    p.classList.toggle('active', p.id === `tab-${tabId}`);
+  });
 
-// Client-side image resizing & compression (max 1000px, <400KB)
+  if (tabId === 'matches') loadSmartMatches();
+  if (tabId === 'my-reports') loadMyReports();
+  if (tabId === 'messages') loadInbox();
+  if (tabId === 'feed') renderItems();
+}
+
+document.querySelectorAll('.nav-tab[data-tab]').forEach((b) => {
+  b.addEventListener('click', () => switchTab(b.dataset.tab));
+});
+document.querySelector('#btnJumpMatches')?.addEventListener('click', () => switchTab('matches'));
+document.querySelector('#brandLogo')?.addEventListener('click', (e) => {
+  e.preventDefault();
+  switchTab('feed');
+});
+
+// -------------------------------------------------------------
+// PHOTO UPLOAD & CANVAS RESIZE
+// -------------------------------------------------------------
 function processImageFile(file) {
   if (!file || !file.type.startsWith('image/')) {
     notify('Please select a valid image file (JPG, PNG, WebP).');
@@ -173,46 +190,33 @@ function clearPhotoUpload() {
   if (photoPreviewBox) photoPreviewBox.classList.add('hidden');
 }
 
-// Photo dropzone listeners (without dismissing modal)
 if (photoDropzone && photoInput) {
   photoDropzone.addEventListener('click', (e) => {
-    if (e.target.id === 'removePhotoBtn' || e.target.closest('#removePhotoBtn')) {
-      return;
-    }
+    if (e.target.id === 'removePhotoBtn' || e.target.closest('#removePhotoBtn')) return;
     photoInput.click();
   });
-
-  photoInput.addEventListener('click', (e) => {
-    e.stopPropagation();
-  });
-
+  photoInput.addEventListener('click', (e) => e.stopPropagation());
   photoInput.addEventListener('change', (e) => {
-    if (e.target.files && e.target.files[0]) {
-      processImageFile(e.target.files[0]);
-    }
+    if (e.target.files && e.target.files[0]) processImageFile(e.target.files[0]);
   });
 
-  ['dragenter', 'dragover'].forEach((eventName) => {
-    photoDropzone.addEventListener(eventName, (e) => {
+  ['dragenter', 'dragover'].forEach((ev) => {
+    photoDropzone.addEventListener(ev, (e) => {
       e.preventDefault();
       e.stopPropagation();
       photoDropzone.classList.add('dragover');
     });
   });
-
-  ['dragleave', 'drop'].forEach((eventName) => {
-    photoDropzone.addEventListener(eventName, (e) => {
+  ['dragleave', 'drop'].forEach((ev) => {
+    photoDropzone.addEventListener(ev, (e) => {
       e.preventDefault();
       e.stopPropagation();
       photoDropzone.classList.remove('dragover');
     });
   });
-
   photoDropzone.addEventListener('drop', (e) => {
     const dt = e.dataTransfer;
-    if (dt.files && dt.files[0]) {
-      processImageFile(dt.files[0]);
-    }
+    if (dt.files && dt.files[0]) processImageFile(dt.files[0]);
   });
 }
 
@@ -223,7 +227,9 @@ if (removePhotoBtn) {
   });
 }
 
-// Render Item Cards
+// -------------------------------------------------------------
+// 1. BROWSE FEED & ITEMS RENDERING
+// -------------------------------------------------------------
 function renderItems() {
   if (!grid) return;
   const q = (searchInput?.value || '').trim().toLowerCase();
@@ -249,7 +255,7 @@ function renderItems() {
   if (!filtered.length) {
     grid.innerHTML = `
       <div class="empty">
-        <p style="font-size: 28px; margin-bottom: 8px;">🔍</p>
+        <p style="font-size: 32px; margin-bottom: 8px;">🔍</p>
         <b>No matching reports found</b>
         <p style="margin-top: 5px;">Try adjusting your search terms or filters, or be the first to report this item.</p>
       </div>
@@ -267,10 +273,10 @@ function renderItems() {
 
       return `
       <article class="item-card ${isResolved ? 'is-resolved' : ''}" data-item-id="${i.id}">
-        <div class="card-image ${i.type.toLowerCase()} ${categoryTone(i.category)}">
+        <div class="card-image">
           ${mediaHtml}
           <span class="card-status-badge ${isResolved ? 'resolved' : 'open'}">
-            ${isResolved ? 'RESOLVED' : 'ACTIVE'}
+            ${isResolved ? 'RESOLVED' : i.type.toUpperCase()}
           </span>
         </div>
         <div class="card-content">
@@ -291,7 +297,6 @@ function renderItems() {
     .join('');
 }
 
-// Load items from backend
 async function loadItems() {
   try {
     const data = await api('/api/items');
@@ -302,14 +307,357 @@ async function loadItems() {
   }
 }
 
-// Open Item Details Modal
+// -------------------------------------------------------------
+// 2. SMART MATCHES HUB
+// -------------------------------------------------------------
+async function loadSmartMatches() {
+  const container = document.querySelector('#matchesContainer');
+  if (!container) return;
+
+  try {
+    const data = await api('/api/matches');
+    matches = data.matches || [];
+
+    const badge = document.querySelector('#matchBadge');
+    if (badge) {
+      if (matches.length > 0) {
+        badge.textContent = matches.length;
+        badge.classList.remove('hidden');
+      } else {
+        badge.classList.add('hidden');
+      }
+    }
+
+    if (!matches.length) {
+      container.innerHTML = `
+        <div class="empty">
+          <p style="font-size: 32px; margin-bottom: 8px;">⚡</p>
+          <b>No active match pairs currently detected</b>
+          <p style="margin-top: 5px;">When a lost item and a found item share matching keywords or categories, they will appear here automatically.</p>
+        </div>
+      `;
+      return;
+    }
+
+    container.innerHTML = matches
+      .map((m) => {
+        const l = m.lost_item;
+        const f = m.found_item;
+        const lThumb = l.image_data ? `<img src="${l.image_data}" alt="${escapeHtml(l.name)}" />` : categoryEmoji(l.category);
+        const fThumb = f.image_data ? `<img src="${f.image_data}" alt="${escapeHtml(f.name)}" />` : categoryEmoji(f.category);
+
+        return `
+        <article class="match-pair-card">
+          <!-- Lost Side -->
+          <div class="match-item-side">
+            <div class="match-thumb">${lThumb}</div>
+            <div class="match-item-details">
+              <span class="pill-badge" style="background:#fdeee9; color:var(--coral);">LOST ITEM</span>
+              <h4>${escapeHtml(l.name)}</h4>
+              <p>⌖ ${escapeHtml(l.location)}</p>
+              <small>Reported by ${escapeHtml(l.owner_name)} (${escapeHtml(l.owner_role)})</small>
+            </div>
+          </div>
+
+          <!-- Center Match Meter -->
+          <div class="match-center-meter">
+            <span class="match-score-badge">⚡ ${m.score}% MATCH</span>
+            <small style="color:var(--muted); font-size:9px;">${escapeHtml(m.reasons.join(' · '))}</small>
+            <button class="button button-primary button-sm" data-match-connect-item="${f.id}" data-match-lost-id="${l.id}">
+              Connect & Reclaim 💬
+            </button>
+          </div>
+
+          <!-- Found Side -->
+          <div class="match-item-side">
+            <div class="match-thumb">${fThumb}</div>
+            <div class="match-item-details">
+              <span class="pill-badge" style="background:#eaf5ef; color:var(--green);">FOUND ITEM</span>
+              <h4>${escapeHtml(f.name)}</h4>
+              <p>⌖ ${escapeHtml(f.location)}</p>
+              <small>Reported by ${escapeHtml(f.owner_name)} (${escapeHtml(f.owner_role)})</small>
+            </div>
+          </div>
+        </article>
+      `;
+      })
+      .join('');
+  } catch (err) {
+    container.innerHTML = `<p class="empty">${err.message}</p>`;
+  }
+}
+
+document.querySelector('#btnRefreshMatches')?.addEventListener('click', loadSmartMatches);
+
+// Connect from Match pair button
+document.querySelector('#matchesContainer')?.addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-match-connect-item]');
+  if (btn) {
+    const foundId = Number(btn.dataset.matchConnectItem);
+    openConnection(foundId);
+  }
+});
+
+// -------------------------------------------------------------
+// 3. MY REPORTS DASHBOARD
+// -------------------------------------------------------------
+async function loadMyReports() {
+  const container = document.querySelector('#myReportsContainer');
+  if (!container) return;
+  if (!currentUser) {
+    authDialog.showModal();
+    notify('Please sign in to view your reports.');
+    return;
+  }
+
+  try {
+    const data = await api('/api/user/items');
+    const userItems = data.items || [];
+
+    if (!userItems.length) {
+      container.innerHTML = `
+        <div class="empty">
+          <p style="font-size: 32px; margin-bottom: 8px;">📋</p>
+          <b>You have not posted any reports yet</b>
+          <p style="margin-top: 5px;">Report a lost or found item to track claims and match alerts in real time.</p>
+        </div>
+      `;
+      return;
+    }
+
+    container.innerHTML = userItems
+      .map((it) => {
+        const isResolved = it.status === 'Resolved';
+        const dateStr = it.date || it.item_date || (it.created_at ? new Date(it.created_at).toLocaleDateString() : '');
+        return `
+        <article class="my-report-card">
+          <div class="my-report-info">
+            <b>${escapeHtml(it.name)} (${escapeHtml(it.type)})</b>
+            <small>⌖ ${escapeHtml(it.location)} · ${dateStr} · 💬 ${it.connections_count || 0} claims/matches</small>
+          </div>
+          <div class="my-report-actions">
+            <button class="button button-sm button-secondary" data-my-toggle-id="${it.id}" data-current-status="${it.status}">
+              ${isResolved ? '↺ Reopen' : '✓ Mark Resolved'}
+            </button>
+            <button class="button button-sm button-danger" data-my-delete-id="${it.id}">
+              🗑 Delete
+            </button>
+          </div>
+        </article>
+      `;
+      })
+      .join('');
+  } catch (e) {
+    container.innerHTML = `<p class="empty">${e.message}</p>`;
+  }
+}
+
+// -------------------------------------------------------------
+// 4. INBOX & LIVE MESSENGER
+// -------------------------------------------------------------
+async function loadInbox() {
+  const sidebar = document.querySelector('#inboxConversationsList');
+  const chatPane = document.querySelector('#inboxChatPane');
+  if (!sidebar) return;
+
+  if (!currentUser) {
+    authDialog.showModal();
+    notify('Please sign in to access your messenger inbox.');
+    return;
+  }
+
+  try {
+    const data = await api('/api/connections');
+    connections = data.connections || [];
+
+    const badge = document.querySelector('#msgBadge');
+    if (badge) {
+      const pending = connections.filter((c) => (c.recipient_id === currentUser.id || c.recipient_email === currentUser.email) && c.status === 'Pending').length;
+      if (pending > 0) {
+        badge.textContent = pending;
+        badge.classList.remove('hidden');
+      } else {
+        badge.classList.add('hidden');
+      }
+    }
+
+    if (!connections.length) {
+      sidebar.innerHTML = '<p style="padding:20px; color:var(--muted); font-size:12px;">No active conversations yet.</p>';
+      chatPane.innerHTML = `
+        <div class="empty-chat-state">
+          <p style="font-size: 32px; margin-bottom: 8px;">💬</p>
+          <b>No messages yet</b>
+          <p>Browse items on campus and click "View Details & Connect" to start a conversation.</p>
+        </div>
+      `;
+      return;
+    }
+
+    // Render Conversation List in Sidebar
+    sidebar.innerHTML = connections
+      .map((c) => {
+        const isIncoming = c.recipient_id === currentUser.id || c.recipient_email === currentUser.email;
+        const otherName = isIncoming ? c.sender_name : c.recipient_name;
+        const isActive = activeChatConnectionId === c.id;
+
+        return `
+        <div class="convo-item ${isActive ? 'active' : ''}" data-chat-id="${c.id}">
+          <h4>${escapeHtml(c.item_name)}</h4>
+          <p><b>${escapeHtml(otherName)}:</b> ${escapeHtml(c.message.split('\n')[0])}</p>
+          <div style="display:flex; justify-content:space-between; margin-top:4px;">
+            <span class="pill-badge" style="font-size:8px;">${c.status}</span>
+            <small style="font-size:9px; color:var(--muted);">${new Date(c.created_at).toLocaleDateString()}</small>
+          </div>
+        </div>
+      `;
+      })
+      .join('');
+
+    // If active conversation selected, render it
+    if (activeChatConnectionId) {
+      renderActiveChat(activeChatConnectionId);
+    } else if (connections.length > 0) {
+      activeChatConnectionId = connections[0].id;
+      renderActiveChat(activeChatConnectionId);
+    }
+  } catch (err) {
+    sidebar.innerHTML = `<p style="padding:20px; color:var(--muted); font-size:12px;">${err.message}</p>`;
+  }
+}
+
+function renderActiveChat(connId) {
+  const chatPane = document.querySelector('#inboxChatPane');
+  const c = connections.find((x) => x.id === connId);
+  if (!c || !chatPane) return;
+
+  const isIncoming = c.recipient_id === currentUser.id || c.recipient_email === currentUser.email;
+  const otherName = isIncoming ? c.sender_name : c.recipient_name;
+  const otherRole = isIncoming ? c.sender_role : c.recipient_role;
+  const otherEmail = isIncoming ? c.sender_email : c.recipient_email;
+  const otherPhone = isIncoming ? c.sender_phone : c.recipient_phone;
+  const isAccepted = c.status === 'Accepted' || c.status === 'Matched';
+
+  // Parse conversation message lines
+  const lines = c.message.split('\n\n');
+
+  chatPane.innerHTML = `
+    <div class="chat-pane-header">
+      <div>
+        <h3>${escapeHtml(c.item_name)} (${escapeHtml(c.item_type)})</h3>
+        <small style="color:var(--muted);">Chatting with <b>${escapeHtml(otherName)}</b> (${escapeHtml(otherRole || 'Member')})</small>
+      </div>
+      <div style="display:flex; gap:8px;">
+        ${
+          isIncoming && c.status === 'Pending'
+            ? `<button class="button button-sm button-primary" data-chat-accept-id="${c.id}">✓ Accept & Reveal Contacts</button>`
+            : ''
+        }
+        ${
+          isAccepted
+            ? `
+            <a class="button button-sm button-secondary" href="mailto:${escapeHtml(otherEmail)}?subject=VCTM Foundly: ${encodeURIComponent(c.item_name)}">✉️ Email</a>
+            ${otherPhone ? `<a class="button button-sm button-secondary" href="tel:${escapeHtml(otherPhone)}">📞 Call</a>` : ''}
+          `
+            : ''
+        }
+      </div>
+    </div>
+
+    <div class="chat-messages-scroll" id="chatMessagesScroll">
+      ${lines
+        .map((line) => {
+          if (!line.trim()) return '';
+          const isMe = line.includes(`[${currentUser.name} `);
+          return `<div class="chat-bubble ${isMe ? 'me' : 'them'}">${escapeHtml(line)}</div>`;
+        })
+        .join('')}
+    </div>
+
+    <!-- Suggested Safe Spots Toolbar -->
+    <div style="padding:6px 20px; background:#f5f3ee; border-top:1px solid var(--line); display:flex; gap:6px; overflow-x:auto;">
+      <small style="font-weight:700; color:var(--muted); font-size:10px; align-self:center;">Safe Spots:</small>
+      <button type="button" class="filter-pill btn-quick-spot" data-spot="Let's meet at the Central Library Circulation Counter.">📚 Library Counter</button>
+      <button type="button" class="filter-pill btn-quick-spot" data-spot="Let's meet at the Main Gate Security Desk.">🛡️ Security Desk</button>
+      <button type="button" class="filter-pill btn-quick-spot" data-spot="Let's meet at the Student Centre Cafeteria.">☕ Cafeteria</button>
+    </div>
+
+    <form class="chat-input-bar" id="chatInputForm" data-chat-send-id="${c.id}">
+      <input type="text" placeholder="Type a message or verification answer..." id="chatMsgInput" required autocomplete="off" />
+      <button type="submit" class="button button-primary">Send 💬</button>
+    </form>
+  `;
+
+  // Auto scroll to bottom
+  const scrollBox = document.querySelector('#chatMessagesScroll');
+  if (scrollBox) scrollBox.scrollTop = scrollBox.scrollHeight;
+}
+
+// Conversation select listener
+document.querySelector('#inboxConversationsList')?.addEventListener('click', (e) => {
+  const item = e.target.closest('[data-chat-id]');
+  if (item) {
+    activeChatConnectionId = Number(item.dataset.chatId);
+    document.querySelectorAll('.convo-item').forEach((x) => x.classList.toggle('active', x === item));
+    renderActiveChat(activeChatConnectionId);
+  }
+});
+
+// Chat message send listener
+document.querySelector('#inboxChatPane')?.addEventListener('submit', async (e) => {
+  if (e.target.id !== 'chatInputForm') return;
+  e.preventDefault();
+  const input = document.querySelector('#chatMsgInput');
+  const text = input?.value.trim();
+  if (!text || !activeChatConnectionId) return;
+
+  try {
+    await api(`/api/connections/${activeChatConnectionId}/message`, {
+      method: 'POST',
+      body: JSON.stringify({ message: text }),
+    });
+    input.value = '';
+    await loadInbox();
+  } catch (err) {
+    notify(err.message);
+  }
+});
+
+// Quick spot autofill listener
+document.querySelector('#inboxChatPane')?.addEventListener('click', async (e) => {
+  const spotBtn = e.target.closest('.btn-quick-spot');
+  if (spotBtn) {
+    const input = document.querySelector('#chatMsgInput');
+    if (input) {
+      input.value = spotBtn.dataset.spot;
+      input.focus();
+    }
+    return;
+  }
+
+  const acceptBtn = e.target.closest('[data-chat-accept-id]');
+  if (acceptBtn) {
+    try {
+      await api(`/api/connections/${acceptBtn.dataset.chatAcceptId}/status`, {
+        method: 'POST',
+        body: JSON.stringify({ status: 'Accepted' }),
+      });
+      notify('Connection accepted! Contact information revealed.');
+      await loadInbox();
+    } catch (err) {
+      notify(err.message);
+    }
+  }
+});
+
+// -------------------------------------------------------------
+// ITEM DETAIL MODAL & VERIFICATION
+// -------------------------------------------------------------
 function openItemDetail(itemId) {
   const item = items.find((x) => x.id === itemId);
   if (!item) return;
-  currentDetailItem = item;
 
   document.querySelector('#detailTypeBadge').textContent = item.type.toUpperCase();
-  document.querySelector('#detailTypeBadge').className = `pill-badge ${item.type === 'Found' ? 'found-pill' : ''}`;
+  document.querySelector('#detailTypeBadge').className = `pill-badge ${item.type === 'Found' ? 'status-open' : ''}`;
 
   const isResolved = item.status === 'Resolved';
   const statusBadge = document.querySelector('#detailStatusBadge');
@@ -319,12 +667,12 @@ function openItemDetail(itemId) {
   document.querySelector('#detailCategoryBadge').textContent = item.category.toUpperCase();
   document.querySelector('#detailTitle').textContent = item.name;
   document.querySelector('#detailLocation').textContent = item.location;
-  document.querySelector('#detailDate').textContent = item.date || item.created_at || '';
+  document.querySelector('#detailDate').textContent = item.date || item.item_date || '';
   document.querySelector('#detailReporter').textContent = item.owner_name || 'Campus Member';
   document.querySelector('#detailRole').textContent = item.owner_role || 'Verified';
   document.querySelector('#detailDescription').textContent = item.description || 'No additional description provided.';
 
-  // Photo Display
+  // Photo
   const imgElem = document.querySelector('#detailImg');
   const emojiElem = document.querySelector('#detailEmojiBox');
   if (item.image_data) {
@@ -337,7 +685,7 @@ function openItemDetail(itemId) {
     emojiElem.textContent = categoryEmoji(item.category);
   }
 
-  // Secret Proof Question Box
+  // Proof Question
   const proofBox = document.querySelector('#detailProofBox');
   if (item.proof_question && item.proof_question.trim()) {
     proofBox.classList.remove('hidden');
@@ -346,7 +694,7 @@ function openItemDetail(itemId) {
     proofBox.classList.add('hidden');
   }
 
-  // Action Buttons
+  // Actions
   const actionsBox = document.querySelector('#detailActions');
   const isOwner = currentUser && (currentUser.id === item.owner_id || currentUser.email === item.owner_email);
   const isAdmin = currentUser && currentUser.role === 'admin';
@@ -403,13 +751,83 @@ function openItemDetail(itemId) {
   itemDetailDialog.showModal();
 }
 
-// User Session Sync
+// -------------------------------------------------------------
+// CONNECTION & CLAIM DIALOG
+// -------------------------------------------------------------
+function openConnection(itemId) {
+  if (!currentUser) {
+    authDialog.showModal();
+    notify('Please sign in to contact the reporter.');
+    return;
+  }
+  const item = items.find((x) => x.id === itemId);
+  if (!item) return;
+
+  connectForm.itemId.value = itemId;
+  const proofPrompt = document.querySelector('#connectProofPrompt');
+  if (item.proof_question && item.proof_question.trim()) {
+    proofPrompt.classList.remove('hidden');
+    document.querySelector('#connectProofQuestionText').textContent = item.proof_question;
+  } else {
+    proofPrompt.classList.add('hidden');
+  }
+
+  connectDialog.showModal();
+}
+
+if (connectForm) {
+  connectForm.addEventListener('submit', async (e) => {
+    if (e.submitter?.value === 'cancel') return;
+    e.preventDefault();
+    try {
+      await api('/api/connections', {
+        method: 'POST',
+        body: JSON.stringify({
+          item_id: Number(connectForm.itemId.value),
+          message: connectForm.message.value,
+        }),
+      });
+      connectDialog.close();
+      connectForm.reset();
+      notify('Message sent! You can track replies in the Messages tab.');
+      switchTab('messages');
+    } catch (err) {
+      notify(err.message);
+    }
+  });
+}
+
+// -------------------------------------------------------------
+// USER PROFILE & AUTHENTICATION
+// -------------------------------------------------------------
+function openUserProfile() {
+  if (!currentUser) {
+    authDialog.showModal();
+    return;
+  }
+  if (currentUser.role === 'admin') {
+    openAdmin();
+    return;
+  }
+
+  document.querySelector('#modalProfileName').textContent = currentUser.name;
+  document.querySelector('#modalProfileRole').textContent = currentUser.campus_role || 'Student';
+  document.querySelector('#modalProfileEmail').textContent = currentUser.email;
+  document.querySelector('#modalProfilePhone').textContent = currentUser.phone ? `📞 ${currentUser.phone}` : 'No phone provided';
+  document.querySelector('#modalAvatarInitials').textContent = currentUser.name
+    .split(' ')
+    .map((x) => x[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+
+  userProfileDialog.showModal();
+}
+
 function syncUser() {
   const signed = !!currentUser;
   document.querySelector('#openAuth').classList.toggle('hidden', signed);
   document.querySelector('#profileButton').classList.toggle('hidden', !signed);
-  document.querySelector('#openConnections').classList.toggle('hidden', !signed);
-  document.querySelector('#openMyReports').classList.toggle('hidden', !signed);
 
   if (signed) {
     document.querySelector('#profileName').textContent = currentUser.name;
@@ -424,380 +842,47 @@ function syncUser() {
   }
 }
 
-// Update Notification Badge
-async function checkPendingUpdates() {
-  if (!currentUser) return;
+async function handleSignOut() {
   try {
-    const data = await api('/api/session');
-    if (data.user) {
-      currentUser = data.user;
-      syncUser();
-    }
-    const count = data.pending_count || 0;
-    const navBadge = document.querySelector('#navConnBadge');
-    const notifDot = document.querySelector('#notifDot');
-
-    if (count > 0) {
-      if (navBadge) {
-        navBadge.textContent = count;
-        navBadge.classList.remove('hidden');
-      }
-      if (notifDot) notifDot.classList.remove('hidden');
-    } else {
-      if (navBadge) navBadge.classList.add('hidden');
-      if (notifDot) notifDot.classList.add('hidden');
-    }
-  } catch (e) {
-    // Silent fail for polling
-  }
+    await api('/api/logout', { method: 'POST' });
+  } catch (_) {}
+  localStorage.removeItem('foundly_token');
+  currentUser = null;
+  userProfileDialog?.close();
+  adminDialog?.close();
+  syncUser();
+  notify('You have been signed out.');
+  switchTab('feed');
 }
 
-// Report Form Type Handler
-function setType(type) {
-  reportType = type;
-  document.querySelectorAll('.type-choice').forEach((b) =>
-    b.classList.toggle('active', b.dataset.type === type)
-  );
-  document.querySelector('#modalTitle').textContent = `Report a ${type.toLowerCase()} item`;
-  document.querySelector('#submitReport').innerHTML = `Publish ${type.toLowerCase()} report <span>→</span>`;
-}
+document.querySelector('#profileButton')?.addEventListener('click', openUserProfile);
+document.querySelector('#closeUserProfile')?.addEventListener('click', () => userProfileDialog.close());
+document.querySelector('#userSignOutBtn')?.addEventListener('click', handleSignOut);
+document.querySelector('#signOut')?.addEventListener('click', handleSignOut);
 
-function openReport(type) {
-  if (!currentUser) {
-    authDialog.showModal();
-    notify('Please sign in to publish a report.');
-    return;
-  }
-  setType(type);
-  clearPhotoUpload();
-  const dateInput = reportForm.querySelector('input[name="date"]');
-  if (dateInput && !dateInput.value) {
-    dateInput.value = new Date().toISOString().split('T')[0];
-  }
-  reportDialog.showModal();
-}
+document.querySelector('#profileMyReportsBtn')?.addEventListener('click', () => {
+  userProfileDialog.close();
+  switchTab('my-reports');
+});
+document.querySelector('#profileConnectionsBtn')?.addEventListener('click', () => {
+  userProfileDialog.close();
+  switchTab('messages');
+});
 
-// Auth Tab Switching
+// Auth Form Tab Switching
 function setAuthMode(mode) {
   authMode = mode;
-  document.querySelectorAll('.auth-tab').forEach((b) =>
-    b.classList.toggle('active', b.dataset.authMode === mode)
-  );
-  document.querySelectorAll('.signup-field').forEach((x) =>
-    x.classList.toggle('show', mode === 'signup')
-  );
-  document.querySelector('#authForm button[type="submit"]').innerHTML = `${
-    mode === 'login' ? 'Sign in' : 'Create account'
-  } <span>→</span>`;
+  document.querySelectorAll('.auth-tab').forEach((b) => b.classList.toggle('active', b.dataset.authMode === mode));
+  document.querySelectorAll('.signup-field').forEach((x) => x.classList.toggle('show', mode === 'signup'));
+  document.querySelector('#authForm button[type="submit"]').innerHTML = `${mode === 'login' ? 'Sign in' : 'Create account'} <span>→</span>`;
   document.querySelector('#authError').textContent = '';
 }
 
-// Open Safe Connection Dialog
-function openConnection(itemId) {
-  if (!currentUser) {
-    authDialog.showModal();
-    notify('Please sign in to contact the reporter.');
-    return;
-  }
-  const item = items.find((x) => x.id === itemId);
-  if (!item) return;
-
-  connectForm.itemId.value = itemId;
-
-  const proofPrompt = document.querySelector('#connectProofPrompt');
-  if (item.proof_question && item.proof_question.trim()) {
-    proofPrompt.classList.remove('hidden');
-    document.querySelector('#connectProofQuestionText').textContent = item.proof_question;
-  } else {
-    proofPrompt.classList.add('hidden');
-  }
-
-  connectDialog.showModal();
-}
-
-// Connections & Direct Contact Modal
-async function openConnections() {
-  if (!currentUser) {
-    authDialog.showModal();
-    return;
-  }
-  try {
-    const list = (await api('/api/connections')).connections;
-    const isMine = (c) => c.recipient_id === currentUser.id || c.recipient_email === currentUser.email;
-
-    const card = (c, incoming) => {
-      const isAccepted = c.status === 'Accepted';
-      const isMatched = c.status === 'Matched';
-      const otherName = incoming ? c.sender_name : c.recipient_name;
-      const otherRole = incoming ? c.sender_role : c.recipient_role;
-      const otherEmail = incoming ? c.sender_email : c.recipient_email;
-      const otherPhone = incoming ? c.sender_phone : c.recipient_phone;
-
-      return `
-        <article class="connection-card" data-conn-id="${c.id}">
-          <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-            <div>
-              ${isMatched ? '<span class="match-tag">⚡ AUTOMATIC MATCH</span>' : ''}
-              <h3>${escapeHtml(c.item_name)} (${escapeHtml(c.item_type || 'Report')})</h3>
-            </div>
-            <small style="color: var(--muted);">${new Date(c.created_at + 'Z').toLocaleDateString()}</small>
-          </div>
-          <small>${
-            incoming
-              ? `From: <b>${escapeHtml(otherName)}</b> (${escapeHtml(otherRole || 'Campus Member')})`
-              : `To: <b>${escapeHtml(otherName)}</b>`
-          }</small>
-          <p style="white-space: pre-wrap;">${escapeHtml(c.message)}</p>
-          
-          ${
-            incoming && c.status === 'Pending'
-              ? `
-            <div class="connection-actions">
-              <button class="accept-request" data-request-action="Accepted" data-request-id="${c.id}">✓ Accept & Share Contacts</button>
-              <button class="decline-request" data-request-action="Declined" data-request-id="${c.id}">Decline</button>
-            </div>
-          `
-              : `
-            <span class="request-status ${isAccepted ? 'accepted' : isMatched ? 'matched' : ''}">
-              Status: ${escapeHtml(c.status)}
-            </span>
-            ${
-              isAccepted || isMatched
-                ? `
-              <div class="contact-revealed">
-                🤝 <b>Verified Contacts Revealed:</b>
-                <div class="contact-quick-buttons">
-                  <a class="btn-contact-action mail" href="mailto:${escapeHtml(otherEmail)}?subject=VCTM Foundly: ${encodeURIComponent(c.item_name)}">
-                    ✉️ Email: ${escapeHtml(otherEmail)}
-                  </a>
-                  ${
-                    otherPhone
-                      ? `<a class="btn-contact-action tel" href="tel:${escapeHtml(otherPhone)}">📞 Call: ${escapeHtml(otherPhone)}</a>`
-                      : ''
-                  }
-                </div>
-                <div class="connection-reply-box">
-                  <input type="text" placeholder="Type a quick message..." class="reply-msg-input" data-reply-conn-id="${c.id}" />
-                  <button type="button" class="btn-send-reply" data-reply-conn-id="${c.id}">Send 💬</button>
-                </div>
-              </div>
-            `
-                : ''
-            }
-          `
-          }
-        </article>
-      `;
-    };
-
-    const received = list.filter(isMine);
-    const sent = list.filter((c) => !isMine(c));
-
-    const connectionsList = document.querySelector('#connectionsList');
-    connectionsList.innerHTML =
-      received.length || sent.length
-        ? `
-      ${
-        received.length
-          ? `<p class="eyebrow" style="margin-top: 14px;"><span></span> INCOMING REQUESTS & MATCHES (${received.length})</p>${received.map((c) => card(c, true)).join('')}`
-          : ''
-      }
-      ${
-        sent.length
-          ? `<p class="eyebrow" style="margin-top: 24px;"><span></span> SENT REQUESTS (${sent.length})</p>${sent.map((c) => card(c, false)).join('')}`
-          : ''
-      }
-    `
-        : '<p class="empty">No active connections yet. Browse items and click "View Details & Connect" to send a message.</p>';
-
-    connectionsDialog.showModal();
-    checkPendingUpdates();
-  } catch (e) {
-    notify(e.message);
-  }
-}
-
-// My Reports Modal
-async function openMyReports() {
-  if (!currentUser) {
-    authDialog.showModal();
-    return;
-  }
-  try {
-    const data = await api('/api/user/items');
-    const userItems = data.items || [];
-    const container = document.querySelector('#myReportsList');
-
-    if (!userItems.length) {
-      container.innerHTML = '<p class="empty">You have not published any lost or found reports yet.</p>';
-    } else {
-      container.innerHTML = userItems
-        .map((it) => {
-          const isResolved = it.status === 'Resolved';
-          const itDate = it.date || it.item_date || (it.created_at ? new Date(it.created_at + 'Z').toLocaleDateString() : 'Recent');
-          return `
-          <article class="my-report-card">
-            <div class="my-report-info">
-              <b>${escapeHtml(it.name)} (${escapeHtml(it.type)})</b>
-              <small>⌖ ${escapeHtml(it.location)} · ${escapeHtml(itDate)} · 💬 ${it.connections_count || 0} claims/matches</small>
-            </div>
-            <div class="my-report-actions">
-              <button class="button button-sm button-secondary" data-my-toggle-id="${it.id}" data-current-status="${it.status}">
-                ${isResolved ? '↺ Reopen' : '✓ Resolve'}
-              </button>
-              <button class="button button-sm button-danger" data-my-delete-id="${it.id}">
-                🗑
-              </button>
-            </div>
-          </article>
-        `;
-        })
-        .join('');
-    }
-
-    myReportsDialog.showModal();
-  } catch (e) {
-    notify(e.message);
-  }
-}
-
-// Admin Console Modal
-async function openAdmin() {
-  try {
-    const data = await api('/api/admin/overview');
-    document.querySelector('#adminItemCount').textContent = data.stats.reports;
-    document.querySelector('#adminLostCount').textContent = data.stats.lost;
-    document.querySelector('#adminFoundCount').textContent = data.stats.found;
-    document.querySelector('#adminResolvedCount').textContent = data.stats.resolved || 0;
-    document.querySelector('#adminUserCount').textContent = data.stats.users || 0;
-    document.querySelector('#adminConnCount').textContent = data.stats.connections || 0;
-
-    document.querySelector('#adminReports').innerHTML = data.items
-      .map(
-        (i) => `
-        <article class="admin-row">
-          <div>
-            <b>${escapeHtml(i.name)}</b>
-            <small>${escapeHtml(i.category)} · ${escapeHtml(i.location)} · Reported by ${escapeHtml(i.owner_name)}</small>
-          </div>
-          <em class="${i.type.toLowerCase()}">${i.type.toUpperCase()}</em>
-          <span class="pill-badge ${i.status === 'Resolved' ? 'status-resolved' : 'status-open'}">${i.status || 'Open'}</span>
-          <button class="text-link danger-link" data-admin-delete="${i.id}">Delete</button>
-        </article>
-      `
-      )
-      .join('');
-
-    adminDialog.showModal();
-  } catch (e) {
-    notify(e.message);
-  }
-}
-
-// -------------------------------------------------------------
-// EVENT LISTENERS
-// -------------------------------------------------------------
-
-// Quick and hero report buttons
-document.querySelectorAll('[data-open-report]').forEach((b) =>
-  b.addEventListener('click', () => openReport(b.dataset.openReport))
-);
-
-document.querySelectorAll('.type-choice').forEach((b) =>
-  b.addEventListener('click', () => setType(b.dataset.type))
-);
-
-// Filters
-document.querySelectorAll('.filter[data-filter]').forEach((b) =>
-  b.addEventListener('click', () => {
-    currentFilter = b.dataset.filter;
-    document.querySelectorAll('.filter[data-filter]').forEach((x) =>
-      x.classList.toggle('active', x === b)
-    );
-    renderItems();
-  })
-);
-
-if (searchInput) searchInput.addEventListener('input', renderItems);
-if (clearSearchBtn) {
-  clearSearchBtn.addEventListener('click', () => {
-    searchInput.value = '';
-    renderItems();
-  });
-}
-if (categoryFilter) {
-  categoryFilter.addEventListener('change', (e) => {
-    currentCategoryFilter = e.target.value;
-    renderItems();
-  });
-}
-if (statusFilter) {
-  statusFilter.addEventListener('change', (e) => {
-    currentStatusFilter = e.target.value;
-    renderItems();
-  });
-}
-
-// Grid item click -> open detail modal
-if (grid) {
-  grid.addEventListener('click', (e) => {
-    const card = e.target.closest('[data-item-id]');
-    if (card) openItemDetail(Number(card.dataset.itemId));
-  });
-}
-
-// Item detail modal close
-document.querySelector('#closeItemDetail')?.addEventListener('click', () => itemDetailDialog.close());
-
-// Report Form Submit
-if (reportForm) {
-  reportForm.addEventListener('submit', async (e) => {
-    if (e.submitter?.value === 'cancel') return;
-    e.preventDefault();
-    const d = new FormData(reportForm);
-    try {
-      await api('/api/items', {
-        method: 'POST',
-        body: JSON.stringify({
-          name: d.get('name'),
-          category: d.get('category'),
-          location: d.get('location'),
-          date: d.get('date'),
-          description: d.get('description'),
-          proof_question: d.get('proof_question'),
-          image_data: currentUploadedImageBase64,
-          type: reportType,
-        }),
-      });
-      reportDialog.close();
-      reportForm.reset();
-      clearPhotoUpload();
-      await loadItems();
-      checkPendingUpdates();
-      notify('Your report is live! We will notify you instantly if a match is found.');
-    } catch (err) {
-      notify(err.message);
-    }
-  });
-}
-
-// Auth Dialog handlers
 document.querySelector('#openAuth')?.addEventListener('click', () => authDialog.showModal());
 document.querySelector('.auth-close')?.addEventListener('click', () => authDialog.close());
 document.querySelector('#closeAuthBtn')?.addEventListener('click', () => authDialog.close());
 document.querySelector('#authBackBtn')?.addEventListener('click', () => authDialog.close());
-document.querySelectorAll('.auth-tab').forEach((b) =>
-  b.addEventListener('click', () => setAuthMode(b.dataset.authMode))
-);
-
-// Click-outside (backdrop click) to close dialogs without breaking inner elements
-document.querySelectorAll('dialog').forEach((dlg) => {
-  dlg.addEventListener('click', (e) => {
-    if (e.target === dlg) {
-      dlg.close();
-    }
-  });
-});
+document.querySelectorAll('.auth-tab').forEach((b) => b.addEventListener('click', () => setAuthMode(b.dataset.authMode)));
 
 if (authForm) {
   authForm.addEventListener('submit', async (e) => {
@@ -805,6 +890,7 @@ if (authForm) {
     const d = new FormData(authForm);
     const errElem = document.querySelector('#authError');
     errElem.textContent = '';
+
     try {
       const payload =
         authMode === 'signup'
@@ -825,20 +911,18 @@ if (authForm) {
         body: JSON.stringify(payload),
       });
 
-      if (res.token) {
-        localStorage.setItem('foundly_token', res.token);
-      }
+      if (res.token) localStorage.setItem('foundly_token', res.token);
       currentUser = res.user;
       authDialog.close();
       authForm.reset();
       syncUser();
       notify(`Welcome, ${currentUser.name}!`);
-      checkPendingUpdates();
       if (currentUser.role === 'admin') openAdmin();
+      else switchTab('feed');
     } catch (err) {
       errElem.textContent = err.message;
       if (err.message.includes('Create account')) {
-        setTimeout(() => setAuthMode('signup'), 1500);
+        setTimeout(() => setAuthMode('signup'), 1200);
       }
     }
   });
@@ -874,74 +958,112 @@ if (resetPasswordForm) {
   });
 }
 
-// Connect Form Submit
-if (connectForm) {
-  connectForm.addEventListener('submit', async (e) => {
+// -------------------------------------------------------------
+// REPORT AN ITEM
+// -------------------------------------------------------------
+function setType(type) {
+  reportType = type;
+  document.querySelectorAll('.type-choice').forEach((b) => b.classList.toggle('active', b.dataset.type === type));
+  document.querySelector('#modalTitle').textContent = `Report a ${type.toLowerCase()} item`;
+  document.querySelector('#submitReport').innerHTML = `Publish ${type.toLowerCase()} report <span>→</span>`;
+}
+
+function openReport(type) {
+  if (!currentUser) {
+    authDialog.showModal();
+    notify('Please sign in to publish a report.');
+    return;
+  }
+  setType(type);
+  clearPhotoUpload();
+  const dateInput = reportForm.querySelector('input[name="date"]');
+  if (dateInput && !dateInput.value) {
+    dateInput.value = new Date().toISOString().split('T')[0];
+  }
+  reportDialog.showModal();
+}
+
+document.querySelectorAll('[data-open-report]').forEach((b) =>
+  b.addEventListener('click', () => openReport(b.dataset.openReport))
+);
+document.querySelector('#btnQuickReport')?.addEventListener('click', () => openReport('Lost'));
+document.querySelectorAll('.type-choice').forEach((b) =>
+  b.addEventListener('click', () => setType(b.dataset.type))
+);
+
+if (reportForm) {
+  reportForm.addEventListener('submit', async (e) => {
     if (e.submitter?.value === 'cancel') return;
     e.preventDefault();
+    const d = new FormData(reportForm);
     try {
-      await api('/api/connections', {
+      await api('/api/items', {
         method: 'POST',
         body: JSON.stringify({
-          item_id: Number(connectForm.itemId.value),
-          message: connectForm.message.value,
+          name: d.get('name'),
+          category: d.get('category'),
+          location: d.get('location'),
+          date: d.get('date'),
+          description: d.get('description'),
+          proof_question: d.get('proof_question'),
+          image_data: currentUploadedImageBase64,
+          type: reportType,
         }),
       });
-      connectDialog.close();
-      connectForm.reset();
-      notify('Message & claim request sent to the reporter.');
+      reportDialog.close();
+      reportForm.reset();
+      clearPhotoUpload();
+      await loadItems();
+      loadSmartMatches();
+      notify('Report live! We will notify you instantly if a match is found.');
     } catch (err) {
       notify(err.message);
     }
   });
 }
 
-// Navigation buttons
-document.querySelector('#openConnections')?.addEventListener('click', openConnections);
-document.querySelector('#closeConnections')?.addEventListener('click', () => connectionsDialog.close());
+// -------------------------------------------------------------
+// SEARCH, FILTERS & GRID CLICKS
+// -------------------------------------------------------------
+document.querySelectorAll('.filter-pill[data-filter]').forEach((b) =>
+  b.addEventListener('click', () => {
+    currentFilter = b.dataset.filter;
+    document.querySelectorAll('.filter-pill[data-filter]').forEach((x) => x.classList.toggle('active', x === b));
+    renderItems();
+  })
+);
 
-document.querySelector('#openMyReports')?.addEventListener('click', openMyReports);
-document.querySelector('#quickMyReports')?.addEventListener('click', openMyReports);
-document.querySelector('#closeMyReports')?.addEventListener('click', () => myReportsDialog.close());
+if (searchInput) searchInput.addEventListener('input', renderItems);
+if (clearSearchBtn) {
+  clearSearchBtn.addEventListener('click', () => {
+    searchInput.value = '';
+    renderItems();
+  });
+}
+if (categoryFilter) {
+  categoryFilter.addEventListener('change', (e) => {
+    currentCategoryFilter = e.target.value;
+    renderItems();
+  });
+}
+if (statusFilter) {
+  statusFilter.addEventListener('change', (e) => {
+    currentStatusFilter = e.target.value;
+    renderItems();
+  });
+}
 
-// Action on Connections List (Accept / Decline / Send Chat Message)
-document.querySelector('#connectionsList')?.addEventListener('click', async (e) => {
-  const actionBtn = e.target.closest('[data-request-action]');
-  if (actionBtn) {
-    try {
-      await api(`/api/connections/${actionBtn.dataset.requestId}/status`, {
-        method: 'POST',
-        body: JSON.stringify({ status: actionBtn.dataset.requestAction }),
-      });
-      notify(`Request ${actionBtn.dataset.requestAction.toLowerCase()}. Contact revealed!`);
-      openConnections();
-    } catch (err) {
-      notify(err.message);
-    }
-    return;
-  }
+if (grid) {
+  grid.addEventListener('click', (e) => {
+    const card = e.target.closest('[data-item-id]');
+    if (card) openItemDetail(Number(card.dataset.itemId));
+  });
+}
 
-  const sendReplyBtn = e.target.closest('.btn-send-reply');
-  if (sendReplyBtn) {
-    const connId = sendReplyBtn.dataset.replyConnId;
-    const input = document.querySelector(`.reply-msg-input[data-reply-conn-id="${connId}"]`);
-    const text = input?.value.trim();
-    if (!text) return;
-    try {
-      await api(`/api/connections/${connId}/message`, {
-        method: 'POST',
-        body: JSON.stringify({ message: text }),
-      });
-      notify('Message sent!');
-      openConnections();
-    } catch (err) {
-      notify(err.message);
-    }
-  }
-});
+document.querySelector('#closeItemDetail')?.addEventListener('click', () => itemDetailDialog.close());
 
 // Action on My Reports List (Toggle Status / Delete)
-document.querySelector('#myReportsList')?.addEventListener('click', async (e) => {
+document.querySelector('#myReportsContainer')?.addEventListener('click', async (e) => {
   const toggleBtn = e.target.closest('[data-my-toggle-id]');
   if (toggleBtn) {
     const itemId = toggleBtn.dataset.myToggleId;
@@ -954,7 +1076,7 @@ document.querySelector('#myReportsList')?.addEventListener('click', async (e) =>
       });
       notify(`Report marked as ${nextStatus.toLowerCase()}.`);
       await loadItems();
-      openMyReports();
+      loadMyReports();
     } catch (err) {
       notify(err.message);
     }
@@ -968,7 +1090,7 @@ document.querySelector('#myReportsList')?.addEventListener('click', async (e) =>
         await api(`/api/items/${deleteBtn.dataset.myDeleteId}`, { method: 'DELETE' });
         notify('Report deleted.');
         await loadItems();
-        openMyReports();
+        loadMyReports();
       } catch (err) {
         notify(err.message);
       }
@@ -976,68 +1098,41 @@ document.querySelector('#myReportsList')?.addEventListener('click', async (e) =>
   }
 });
 
-// User Profile & Account Dialog
-const userProfileDialog = document.querySelector('#userProfileDialog');
-
-function openUserProfile() {
-  if (!currentUser) {
-    authDialog.showModal();
-    return;
-  }
-  if (currentUser.role === 'admin') {
-    openAdmin();
-    return;
-  }
-
-  document.querySelector('#modalProfileName').textContent = currentUser.name;
-  document.querySelector('#modalProfileRole').textContent = currentUser.campus_role || 'Member';
-  document.querySelector('#modalProfileEmail').textContent = currentUser.email;
-  document.querySelector('#modalProfilePhone').textContent = currentUser.phone ? `📞 ${currentUser.phone}` : 'No phone number provided';
-  document.querySelector('#modalAvatarInitials').textContent = currentUser.name
-    .split(' ')
-    .map((x) => x[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase();
-
-  userProfileDialog.showModal();
-}
-
-document.querySelector('#profileButton')?.addEventListener('click', openUserProfile);
-document.querySelector('#closeUserProfile')?.addEventListener('click', () => userProfileDialog.close());
-
-document.querySelector('#profileMyReportsBtn')?.addEventListener('click', () => {
-  userProfileDialog.close();
-  openMyReports();
-});
-
-document.querySelector('#profileConnectionsBtn')?.addEventListener('click', () => {
-  userProfileDialog.close();
-  openConnections();
-});
-
-async function handleSignOut() {
+// Admin Console
+async function openAdmin() {
   try {
-    await api('/api/logout', { method: 'POST' });
-  } catch (_) {}
-  localStorage.removeItem('foundly_token');
-  currentUser = null;
-  userProfileDialog?.close();
-  adminDialog?.close();
-  syncUser();
-  notify('You have been signed out.');
+    const data = await api('/api/admin/overview');
+    document.querySelector('#adminItemCount').textContent = data.stats.reports;
+    document.querySelector('#adminLostCount').textContent = data.stats.lost;
+    document.querySelector('#adminFoundCount').textContent = data.stats.found;
+    document.querySelector('#adminResolvedCount').textContent = data.stats.resolved || 0;
+    document.querySelector('#adminUserCount').textContent = data.stats.users || 0;
+    document.querySelector('#adminConnCount').textContent = data.stats.connections || 0;
+
+    document.querySelector('#adminReports').innerHTML = data.items
+      .map(
+        (i) => `
+        <article class="admin-row">
+          <div>
+            <b>${escapeHtml(i.name)}</b>
+            <small>${escapeHtml(i.category)} · ${escapeHtml(i.location)} · Reported by ${escapeHtml(i.owner_name)}</small>
+          </div>
+          <em class="${i.type.toLowerCase()}">${i.type.toUpperCase()}</em>
+          <span class="pill-badge ${i.status === 'Resolved' ? 'status-resolved' : 'status-open'}">${i.status || 'Open'}</span>
+          <button class="text-link danger-link" data-admin-delete="${i.id}">Delete</button>
+        </article>
+      `
+      )
+      .join('');
+
+    adminDialog.showModal();
+  } catch (e) {
+    notify(e.message);
+  }
 }
 
-document.querySelector('#userSignOutBtn')?.addEventListener('click', handleSignOut);
-document.querySelector('#signOut')?.addEventListener('click', handleSignOut);
 document.querySelector('#closeAdmin')?.addEventListener('click', () => adminDialog.close());
 
-document.querySelector('#notifications')?.addEventListener('click', () => {
-  if (currentUser) openConnections();
-  else notify('Please sign in to view notifications & messages.');
-});
-
-// Admin Export CSV
 document.querySelector('#exportCsvBtn')?.addEventListener('click', async () => {
   try {
     const blob = await api('/api/admin/export');
@@ -1055,7 +1150,6 @@ document.querySelector('#exportCsvBtn')?.addEventListener('click', async () => {
   }
 });
 
-// Admin report deletion
 document.querySelector('#adminReports')?.addEventListener('click', async (e) => {
   const b = e.target.closest('[data-admin-delete]');
   if (!b) return;
@@ -1071,8 +1165,15 @@ document.querySelector('#adminReports')?.addEventListener('click', async (e) => 
   }
 });
 
+// Click-outside backdrop handler
+document.querySelectorAll('dialog').forEach((dlg) => {
+  dlg.addEventListener('click', (e) => {
+    if (e.target === dlg) dlg.close();
+  });
+});
+
 // -------------------------------------------------------------
-// INITIALIZATION & REAL-TIME REFRESH
+// INITIALIZATION
 // -------------------------------------------------------------
 (async () => {
   try {
@@ -1082,14 +1183,17 @@ document.querySelector('#adminReports')?.addEventListener('click', async (e) => 
       localStorage.removeItem('foundly_token');
     }
     syncUser();
-    checkPendingUpdates();
     await loadItems();
+    loadSmartMatches();
 
+    // Refresh every 10s
     setInterval(async () => {
       await loadItems();
-      checkPendingUpdates();
-    }, 8000);
+      const s = await api('/api/session');
+      if (s.user) currentUser = s.user;
+      syncUser();
+    }, 10000);
   } catch (e) {
-    console.error('Initialization error:', e);
+    console.error('Init notice:', e);
   }
 })();
