@@ -75,10 +75,10 @@ def verify_password(password: str, salt_hex: str, expected_hash_hex: str) -> boo
 
 
 def is_college_email(email: str) -> bool:
-    if ALLOW_ALL_DOMAINS:
-        return bool(re.match(r"^[^@]+@[^@]+\.[^@]+$", email))
+    if not email or "@" not in email:
+        return False
     email = email.lower().strip()
-    return any(email.endswith("@" + domain) for domain in COLLEGE_DOMAINS)
+    return bool(re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email))
 
 
 # -------------------------------------------------------------
