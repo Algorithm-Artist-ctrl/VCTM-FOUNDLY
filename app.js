@@ -1005,13 +1005,23 @@ function syncUser() {
   document.querySelector('#openMyReports')?.classList.toggle('hidden', !signed);
   document.querySelector('#openConnections')?.classList.toggle('hidden', !signed);
 
-  // Hero Section Transformation (Guest Hero vs Logged-In User Dashboard Hero)
+  // Hero & Informational Section Toggles
   const guestHero = document.querySelector('#discover');
   const userHero = document.querySelector('#userHero');
+  const howItWorks = document.querySelector('#how-it-works');
+  const safeZones = document.querySelector('#safe-zones');
+  const quickActions = document.querySelector('.quick-actions');
+  const navHowItWorks = document.querySelector('a[href="#how-it-works"]');
+  const navSafeZones = document.querySelector('a[href="#safe-zones"]');
 
   if (signed) {
     guestHero?.classList.add('hidden');
     userHero?.classList.remove('hidden');
+    howItWorks?.classList.add('hidden');
+    safeZones?.classList.add('hidden');
+    quickActions?.classList.add('hidden');
+    navHowItWorks?.classList.add('hidden');
+    navSafeZones?.classList.add('hidden');
 
     const initials = (currentUser.name || 'User')
       .split(' ')
@@ -1042,6 +1052,11 @@ function syncUser() {
   } else {
     guestHero?.classList.remove('hidden');
     userHero?.classList.add('hidden');
+    howItWorks?.classList.remove('hidden');
+    safeZones?.classList.remove('hidden');
+    quickActions?.classList.remove('hidden');
+    navHowItWorks?.classList.remove('hidden');
+    navSafeZones?.classList.remove('hidden');
 
     const myPostsPill = document.querySelector('#myPostsFilterPill');
     if (myPostsPill) myPostsPill.classList.add('hidden');
