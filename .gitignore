@@ -1,4 +1,8 @@
+.env
+.env.local
+foundly.db
+foundly.db-shm
+foundly.db-wal
 __pycache__/
 *.pyc
 .DS_Store
-*.swp

@@ -28,6 +28,9 @@ DB_PATH = os.environ.get("DATABASE_PATH", str(ROOT / "foundly.db"))
 PORT = int(os.environ.get("PORT", 8000))
 HOST = os.environ.get("HOST", "0.0.0.0")
 
+SUPABASE_URL = os.environ.get("SUPABASE_URL", os.environ.get("NEXT_PUBLIC_SUPABASE_URL", "https://utwodwtccrmibmdwtpmc.supabase.co"))
+SUPABASE_SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
+
 raw_domains = os.environ.get("ALLOWED_DOMAINS", "vctm.in,vctm.edu,gmail.com,foundly.test")
 COLLEGE_DOMAINS = [d.strip().lower() for d in raw_domains.split(",") if d.strip()]
 ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@foundly.test").lower()
@@ -38,6 +41,42 @@ ALLOW_ALL_DOMAINS = "*" in COLLEGE_DOMAINS or os.environ.get("ALLOW_ALL_DOMAINS"
 RATE_LIMITS = defaultdict(list)
 MAX_REQUESTS_PER_WINDOW = 120
 RATE_WINDOW_SECONDS = 60
+
+
+def sync_item_to_supabase(item_dict: dict):
+    """Syncs created item to Supabase cloud table asynchronously/gracefully."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
+        return
+    try:
+        import urllib.request
+        req_url = f"{SUPABASE_URL}/rest/v1/items"
+        payload = json.dumps({
+            "name": item_dict.get("name"),
+            "category": item_dict.get("category"),
+            "location": item_dict.get("location"),
+            "item_date": item_dict.get("item_date") or item_dict.get("date"),
+            "description": item_dict.get("description"),
+            "type": item_dict.get("type"),
+            "status": item_dict.get("status", "Open"),
+            "proof_question": item_dict.get("proof_question"),
+            "owner_name": item_dict.get("owner_name"),
+            "owner_email": item_dict.get("owner_email"),
+        }).encode("utf-8")
+
+        req = urllib.request.Request(
+            req_url,
+            data=payload,
+            headers={
+                "apikey": SUPABASE_SERVICE_ROLE_KEY,
+                "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
+                "Content-Type": "application/json",
+                "Prefer": "return=minimal"
+            }
+        )
+        with urllib.request.urlopen(req, timeout=3):
+            pass
+    except Exception:
+        pass
 
 
 def check_rate_limit(ip_address: str) -> bool:
@@ -670,6 +709,19 @@ class FoundlyHandler(SimpleHTTPRequestHandler):
                         (name, cat, loc, date_str, desc, t, img, proof, user["id"])
                     )
                     item_id = cur.lastrowid
+
+                sync_item_to_supabase({
+                    "name": name,
+                    "category": cat,
+                    "location": loc,
+                    "item_date": date_str,
+                    "description": desc,
+                    "type": t,
+                    "status": "Open",
+                    "proof_question": proof,
+                    "owner_name": user["name"],
+                    "owner_email": user["email"]
+                })
 
                 self.send_json({"item": {"id": item_id}}, 201)
                 return
