@@ -380,10 +380,11 @@ async function loadConnections() {
 async function loadSmartMatches() {
   const container = document.querySelector('#matchesHomeGrid');
   const matchesSection = document.querySelector('#matches');
-  if (!container) return;
+  if (!container || !matchesSection) return;
 
-  if (!currentUser) {
-    matchesSection?.classList.add('hidden');
+  if (!currentUser || currentUser.role === 'admin') {
+    matchesSection.classList.remove('has-matches');
+    container.innerHTML = '';
     return;
   }
 
@@ -392,7 +393,7 @@ async function loadSmartMatches() {
     matches = data.matches || [];
     syncUserMetrics();
 
-    // Show matches relevant to this user's reports
+    // Show matches strictly relevant to this user's reports
     const relevantMatches = matches.filter((m) => isItemOwner(m.lost_item) || isItemOwner(m.found_item));
 
     const badge = document.querySelector('#navMatchBadge');
@@ -405,17 +406,13 @@ async function loadSmartMatches() {
       }
     }
 
-    if (!relevantMatches.length) {
-      container.innerHTML = `
-        <div class="empty">
-          <p style="font-size: 32px; margin-bottom: 8px;">⚡</p>
-          <b>No match alerts for your reports yet</b>
-          <p style="margin-top: 5px;">When you report a lost item and another student reports finding it, Foundly will automatically correlate the reports and alert you here.</p>
-        </div>
-      `;
+    if (relevantMatches.length === 0) {
+      matchesSection.classList.remove('has-matches');
+      container.innerHTML = '';
       return;
     }
 
+    matchesSection.classList.add('has-matches');
     container.innerHTML = relevantMatches
       .map((m) => {
         const l = m.lost_item;
@@ -1065,14 +1062,13 @@ function syncUser() {
 
     if (isAdmin) {
       userHero?.classList.add('hidden');
-      matchesSection?.classList.add('hidden');
+      matchesSection?.classList.remove('has-matches');
       adminHero?.classList.remove('hidden');
       itemsSection?.classList.remove('hidden');
       loadAdminDashboard();
     } else {
       adminHero?.classList.add('hidden');
       userHero?.classList.remove('hidden');
-      matchesSection?.classList.remove('hidden');
       itemsSection?.classList.remove('hidden');
       syncUserMetrics();
     }
@@ -1110,11 +1106,11 @@ function syncUser() {
     guestHero?.classList.remove('hidden');
     userHero?.classList.add('hidden');
     adminHero?.classList.add('hidden');
+    matchesSection?.classList.remove('has-matches');
     howItWorks?.classList.remove('hidden');
     safeZones?.classList.remove('hidden');
     quickActions?.classList.remove('hidden');
     itemsSection?.classList.add('hidden');
-    matchesSection?.classList.add('hidden');
 
     document.querySelectorAll('.guest-nav').forEach((el) => el.classList.remove('hidden'));
     document.querySelectorAll('.member-nav').forEach((el) => el.classList.add('hidden'));

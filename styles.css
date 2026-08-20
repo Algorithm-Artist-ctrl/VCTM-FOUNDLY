@@ -1136,6 +1136,7 @@ footer p { margin: 0; }
 
 /* Strict Authentication State Visibility Rules */
 body:not(.is-authenticated) #matches,
+body:not(.is-authenticated) .matches-section,
 body:not(.is-authenticated) #items,
 body:not(.is-authenticated) #userHero,
 body:not(.is-authenticated) #adminDashboardSection,
@@ -1158,6 +1159,7 @@ body.is-authenticated #openAuth {
 /* Strict Admin Role Visibility: Hide student hero/matches and show Admin Control Center */
 body.is-admin #userHero,
 body.is-admin #matches,
+body.is-admin .matches-section,
 body.is-admin #discover,
 body.is-admin #safe-zones,
 body.is-admin #how-it-works,
@@ -1173,6 +1175,17 @@ body.is-admin #adminDashboardSection {
 
 body:not(.is-admin) #adminDashboardSection {
   display: none !important;
+}
+
+/* Smart Matches: Only visible for logged-in students when actual matches exist */
+#matches,
+.matches-section {
+  display: none !important;
+}
+
+body.is-authenticated:not(.is-admin) #matches.has-matches,
+body.is-authenticated:not(.is-admin) .matches-section.has-matches {
+  display: block !important;
 }
 
 /* ============================================================
