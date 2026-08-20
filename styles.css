@@ -831,12 +831,13 @@ h1 em { color: var(--coral); }
   transition: 0.15s background-color, 0.15s color;
 }
 .card-bottom.action-guest {
-  background: #fbf9f5;
-  color: #718096;
+  background: #f1ede4;
+  color: #64748b;
+  border-top: 1px dashed #cbd5e1;
 }
 .item-card:hover .card-bottom.action-guest {
-  background: #f0ebe1;
-  color: var(--ink);
+  background: #e2e8f0;
+  color: #0f172a;
 }
 .card-bottom.action-member {
   background: #fff5f3;
@@ -847,14 +848,14 @@ h1 em { color: var(--coral); }
   color: #c4321d;
 }
 .card-bottom.action-owner {
-  background: #102a43;
-  color: #ffffff;
+  background: #0f172a;
+  color: #38bdf8;
 }
 .card-bottom.action-owner strong {
-  color: #f7a02c;
+  color: #f59e0b;
 }
 .item-card:hover .card-bottom.action-owner {
-  background: #1e3a5f;
+  background: #1e293b;
 }
 
 /* Safe Points Section */

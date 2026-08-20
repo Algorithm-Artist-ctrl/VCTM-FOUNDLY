@@ -527,6 +527,12 @@ class FoundlyHandler(SimpleHTTPRequestHandler):
         except Exception as e:
             self.send_error_json(str(e), 500)
 
+    def end_headers(self):
+        self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+        self.send_header("Pragma", "no-cache")
+        self.send_header("Expires", "0")
+        super().end_headers()
+
     def do_POST(self):
         client_ip = self.client_address[0]
         if not check_rate_limit(client_ip):
