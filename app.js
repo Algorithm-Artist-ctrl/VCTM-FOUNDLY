@@ -923,7 +923,9 @@ function openUserProfile() {
     return;
   }
   if (currentUser.role === 'admin') {
-    openAdmin();
+    const el = document.querySelector('#adminDashboardSection');
+    if (el) el.scrollIntoView({ behavior: 'smooth' });
+    loadAdminDashboard();
     return;
   }
 
@@ -1034,18 +1036,21 @@ function syncUserMetrics() {
 
 function syncUser() {
   const signed = !!currentUser;
+  const isAdmin = signed && currentUser.role === 'admin';
   document.body.classList.toggle('is-authenticated', signed);
+  document.body.classList.toggle('is-admin', isAdmin);
   
   // Top Navbar Navigation Toggles
   document.querySelector('#openAuth')?.classList.toggle('hidden', signed);
   document.querySelector('#profileButton')?.classList.toggle('hidden', !signed);
   document.querySelector('#topNavSignOut')?.classList.toggle('hidden', !signed);
-  document.querySelector('#openMyReports')?.classList.toggle('hidden', !signed);
+  document.querySelector('#openMyReports')?.classList.toggle('hidden', !signed || isAdmin);
   document.querySelector('#openConnections')?.classList.toggle('hidden', !signed);
 
   // Hero & Informational Section Toggles
   const guestHero = document.querySelector('#discover');
   const userHero = document.querySelector('#userHero');
+  const adminHero = document.querySelector('#adminDashboardSection');
   const howItWorks = document.querySelector('#how-it-works');
   const safeZones = document.querySelector('#safe-zones');
   const quickActions = document.querySelector('.quick-actions');
@@ -1054,12 +1059,23 @@ function syncUser() {
 
   if (signed) {
     guestHero?.classList.add('hidden');
-    userHero?.classList.remove('hidden');
     howItWorks?.classList.add('hidden');
     safeZones?.classList.add('hidden');
     quickActions?.classList.add('hidden');
-    itemsSection?.classList.remove('hidden');
-    matchesSection?.classList.remove('hidden');
+
+    if (isAdmin) {
+      userHero?.classList.add('hidden');
+      matchesSection?.classList.add('hidden');
+      adminHero?.classList.remove('hidden');
+      itemsSection?.classList.remove('hidden');
+      loadAdminDashboard();
+    } else {
+      adminHero?.classList.add('hidden');
+      userHero?.classList.remove('hidden');
+      matchesSection?.classList.remove('hidden');
+      itemsSection?.classList.remove('hidden');
+      syncUserMetrics();
+    }
 
     document.querySelectorAll('.guest-nav').forEach((el) => el.classList.add('hidden'));
     document.querySelectorAll('.member-nav').forEach((el) => el.classList.remove('hidden'));
@@ -1076,23 +1092,24 @@ function syncUser() {
     const profileRoleEl = document.querySelector('#profileRole');
     const avatarInitialsEl = document.querySelector('#avatarInitials');
     if (profileNameEl) profileNameEl.textContent = currentUser.name;
-    if (profileRoleEl) profileRoleEl.textContent = currentUser.role === 'admin' ? 'Administrator' : (currentUser.campus_role || 'Student');
-    if (avatarInitialsEl) avatarInitialsEl.textContent = initials;
+    if (profileRoleEl) profileRoleEl.textContent = isAdmin ? '👑 Administrator' : (currentUser.campus_role || 'Student');
+    if (avatarInitialsEl) avatarInitialsEl.textContent = isAdmin ? '👑' : initials;
 
-    // User Dashboard Hero Info
-    const heroInitialsEl = document.querySelector('#heroUserInitials');
-    const heroNameEl = document.querySelector('#heroUserName');
-    const heroRoleEl = document.querySelector('#heroUserRole');
-    const heroEmailEl = document.querySelector('#heroUserEmail');
-    if (heroInitialsEl) heroInitialsEl.textContent = initials;
-    if (heroNameEl) heroNameEl.textContent = currentUser.name;
-    if (heroRoleEl) heroRoleEl.textContent = currentUser.role === 'admin' ? 'Administrator' : (currentUser.campus_role || 'Student');
-    if (heroEmailEl) heroEmailEl.textContent = currentUser.email;
-
-    syncUserMetrics();
+    if (!isAdmin) {
+      // User Dashboard Hero Info
+      const heroInitialsEl = document.querySelector('#heroUserInitials');
+      const heroNameEl = document.querySelector('#heroUserName');
+      const heroRoleEl = document.querySelector('#heroUserRole');
+      const heroEmailEl = document.querySelector('#heroUserEmail');
+      if (heroInitialsEl) heroInitialsEl.textContent = initials;
+      if (heroNameEl) heroNameEl.textContent = currentUser.name;
+      if (heroRoleEl) heroRoleEl.textContent = currentUser.campus_role || 'Student';
+      if (heroEmailEl) heroEmailEl.textContent = currentUser.email;
+    }
   } else {
     guestHero?.classList.remove('hidden');
     userHero?.classList.add('hidden');
+    adminHero?.classList.add('hidden');
     howItWorks?.classList.remove('hidden');
     safeZones?.classList.remove('hidden');
     quickActions?.classList.remove('hidden');
@@ -1372,73 +1389,258 @@ document.querySelector('#userDashboardItemsGrid')?.addEventListener('click', (e)
 });
 
 // -------------------------------------------------------------
-// 10. ADMIN CONSOLE
+// 10. DEDICATED CAMPUS ADMINISTRATOR CONTROL CENTER
 // -------------------------------------------------------------
-async function openAdmin() {
+let adminUsersList = [];
+let adminReportsList = [];
+
+async function loadAdminDashboard() {
+  if (!currentUser || currentUser.role !== 'admin') return;
+
   try {
     const data = await api('/api/admin/overview');
-    document.querySelector('#adminItemCount').textContent = data.stats.reports;
-    document.querySelector('#adminLostCount').textContent = data.stats.lost;
-    document.querySelector('#adminFoundCount').textContent = data.stats.found;
-    document.querySelector('#adminResolvedCount').textContent = data.stats.resolved || 0;
-    document.querySelector('#adminUserCount').textContent = data.stats.users || 0;
-    document.querySelector('#adminConnCount').textContent = data.stats.connections || 0;
+    const stats = data.stats || {};
+    adminUsersList = data.users || [];
+    adminReportsList = data.items || [];
 
-    document.querySelector('#adminReports').innerHTML = data.items
-      .map(
-        (i) => `
-        <article class="admin-row">
-          <div>
-            <b>${escapeHtml(i.name)}</b>
-            <small>${escapeHtml(i.category)} · ${escapeHtml(i.location)} · Reported by ${escapeHtml(i.owner_name)}</small>
-          </div>
-          <em class="${i.type.toLowerCase()}">${i.type.toUpperCase()}</em>
-          <span class="pill-badge ${i.status === 'Resolved' ? 'status-resolved' : 'status-open'}">${i.status || 'Open'}</span>
-          <button class="text-link danger-link" data-admin-delete="${i.id}">Delete</button>
-        </article>
-      `
-      )
-      .join('');
+    // Global Metric Counters
+    const elUsers = document.querySelector('#adminStatUsers');
+    const elReports = document.querySelector('#adminStatReports');
+    const elLost = document.querySelector('#adminStatLost');
+    const elFound = document.querySelector('#adminStatFound');
+    const elResolved = document.querySelector('#adminStatResolved');
+    const elConns = document.querySelector('#adminStatConnections');
 
-    adminDialog.showModal();
-  } catch (e) {
-    notify(e.message);
+    if (elUsers) elUsers.textContent = stats.users || 0;
+    if (elReports) elReports.textContent = stats.reports || 0;
+    if (elLost) elLost.textContent = stats.lost || 0;
+    if (elFound) elFound.textContent = stats.found || 0;
+    if (elResolved) elResolved.textContent = stats.resolved || 0;
+    if (elConns) elConns.textContent = stats.connections || 0;
+
+    // Tab counts
+    const tabUsersCount = document.querySelector('#adminTabUsersCount');
+    const tabReportsCount = document.querySelector('#adminTabReportsCount');
+    if (tabUsersCount) tabUsersCount.textContent = adminUsersList.length;
+    if (tabReportsCount) tabReportsCount.textContent = adminReportsList.length;
+
+    renderAdminUsers();
+    renderAdminReports();
+  } catch (err) {
+    console.error('Admin overview failed:', err);
   }
 }
 
-document.querySelector('#closeAdmin')?.addEventListener('click', () => adminDialog.close());
+function renderAdminUsers(searchQuery = '') {
+  const tbody = document.querySelector('#adminUsersTableBody');
+  if (!tbody) return;
 
-document.querySelector('#exportCsvBtn')?.addEventListener('click', async () => {
-  try {
-    const blob = await api('/api/admin/export');
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `vctm-foundly-reports-${new Date().toISOString().split('T')[0]}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    window.URL.revokeObjectURL(url);
-    notify('Reports exported to CSV successfully.');
-  } catch (err) {
-    notify(err.message);
+  const q = searchQuery.toLowerCase().trim();
+  const filtered = adminUsersList.filter(
+    (u) =>
+      !q ||
+      (u.name && u.name.toLowerCase().includes(q)) ||
+      (u.email && u.email.toLowerCase().includes(q)) ||
+      (u.phone && u.phone.toLowerCase().includes(q)) ||
+      (u.campus_role && u.campus_role.toLowerCase().includes(q))
+  );
+
+  if (!filtered.length) {
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; padding: 24px; color: var(--muted);">No users found matching "${escapeHtml(searchQuery)}"</td></tr>`;
+    return;
   }
+
+  tbody.innerHTML = filtered
+    .map((u) => {
+      const isMe = u.id === currentUser.id;
+      const isBlocked = u.is_blocked || u.role === 'blocked';
+      const statusBadge = isBlocked
+        ? `<span class="badge-blocked">🔴 Blocked</span>`
+        : `<span class="badge-active">🟢 Active</span>`;
+
+      const actionButtons = isMe
+        ? `<span style="font-size: 11px; font-weight: 700; color: var(--coral);">👑 Primary Admin</span>`
+        : `
+          <button class="admin-btn-action ${isBlocked ? 'admin-btn-unblock' : 'admin-btn-block'}" data-admin-action="toggle-block" data-user-id="${u.id}" data-blocked="${isBlocked}">
+            ${isBlocked ? '✅ Unblock' : '🚫 Block'}
+          </button>
+          <button class="admin-btn-action admin-btn-delete" data-admin-action="delete-user" data-user-id="${u.id}">
+            🗑 Delete
+          </button>
+        `;
+
+      return `
+        <tr>
+          <td><b>#${u.id}</b></td>
+          <td><b>${escapeHtml(u.name)}</b></td>
+          <td><code>${escapeHtml(u.email)}</code></td>
+          <td><span class="pill-badge">${escapeHtml(u.campus_role || 'Student')}</span></td>
+          <td>${u.phone ? escapeHtml(u.phone) : '<small style="color:var(--muted)">None</small>'}</td>
+          <td><b>${u.items_count || 0}</b></td>
+          <td>${statusBadge}</td>
+          <td style="text-align: right;">${actionButtons}</td>
+        </tr>
+      `;
+    })
+    .join('');
+}
+
+function renderAdminReports(searchQuery = '') {
+  const tbody = document.querySelector('#adminReportsTableBody');
+  if (!tbody) return;
+
+  const q = searchQuery.toLowerCase().trim();
+  const filtered = adminReportsList.filter(
+    (it) =>
+      !q ||
+      (it.name && it.name.toLowerCase().includes(q)) ||
+      (it.category && it.category.toLowerCase().includes(q)) ||
+      (it.location && it.location.toLowerCase().includes(q)) ||
+      (it.owner_name && it.owner_name.toLowerCase().includes(q))
+  );
+
+  if (!filtered.length) {
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; padding: 24px; color: var(--muted);">No reports found matching "${escapeHtml(searchQuery)}"</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = filtered
+    .map((it) => {
+      const typeBadge =
+        it.type === 'Lost'
+          ? `<span class="pill-badge status-lost" style="background:#fee2e2;color:#991b1b;">🔴 LOST</span>`
+          : `<span class="pill-badge status-found" style="background:#dcfce7;color:#166534;">🟢 FOUND</span>`;
+      const isResolved = it.status === 'Resolved';
+      const statusBadge = isResolved
+        ? `<span class="badge-active">Resolved</span>`
+        : `<span class="pill-badge status-open">Active</span>`;
+
+      return `
+        <tr>
+          <td><b>#${it.id}</b></td>
+          <td><b>${escapeHtml(it.name)}</b></td>
+          <td>${typeBadge}</td>
+          <td><span class="category-pill">${escapeHtml(it.category)}</span></td>
+          <td>⌖ ${escapeHtml(it.location)}</td>
+          <td>${escapeHtml(it.owner_name || 'Member')}</td>
+          <td>${statusBadge}</td>
+          <td style="text-align: right;">
+            ${!isResolved ? `<button class="admin-btn-action admin-btn-unblock" data-admin-action="resolve-item" data-item-id="${it.id}">✓ Resolve</button>` : ''}
+            <button class="admin-btn-action admin-btn-delete" data-admin-action="delete-item" data-item-id="${it.id}">🗑 Delete</button>
+          </td>
+        </tr>
+      `;
+    })
+    .join('');
+}
+
+// Admin Tab Switching
+document.querySelector('#adminTabUsersBtn')?.addEventListener('click', () => {
+  document.querySelector('#adminTabUsersBtn').classList.add('active');
+  document.querySelector('#adminTabReportsBtn').classList.remove('active');
+  document.querySelector('#adminUsersPanel').classList.remove('hidden');
+  document.querySelector('#adminReportsPanel').classList.add('hidden');
 });
 
-document.querySelector('#adminReports')?.addEventListener('click', async (e) => {
-  const b = e.target.closest('[data-admin-delete]');
-  if (!b) return;
-  if (confirm('Admin: Delete this report permanently?')) {
+document.querySelector('#adminTabReportsBtn')?.addEventListener('click', () => {
+  document.querySelector('#adminTabReportsBtn').classList.add('active');
+  document.querySelector('#adminTabUsersBtn').classList.remove('active');
+  document.querySelector('#adminReportsPanel').classList.remove('hidden');
+  document.querySelector('#adminUsersPanel').classList.add('hidden');
+});
+
+// Admin Live Filtering
+document.querySelector('#adminUserSearchInput')?.addEventListener('input', (e) => {
+  renderAdminUsers(e.target.value);
+});
+
+document.querySelector('#adminReportSearchInput')?.addEventListener('input', (e) => {
+  renderAdminReports(e.target.value);
+});
+
+// Admin Users Table Actions (Block / Unblock / Delete User)
+document.querySelector('#adminUsersTableBody')?.addEventListener('click', async (e) => {
+  const btn = e.target.closest('[data-admin-action]');
+  if (!btn) return;
+  const action = btn.dataset.adminAction;
+  const userId = Number(btn.dataset.userId);
+
+  if (action === 'toggle-block') {
+    const isCurrentlyBlocked = btn.dataset.blocked === 'true';
+    const confirmMsg = isCurrentlyBlocked
+      ? 'Unblock this user and restore their login access?'
+      : 'Block this user? Their active sessions will be terminated and they will not be able to log in.';
+    if (!confirm(confirmMsg)) return;
+
     try {
-      await api(`/api/items/${b.dataset.adminDelete}`, { method: 'DELETE' });
-      notify('Report removed by administrator.');
+      await api('/api/admin/users/toggle-block', {
+        method: 'POST',
+        body: JSON.stringify({ user_id: userId, block: !isCurrentlyBlocked }),
+      });
+      notify(isCurrentlyBlocked ? 'User unblocked.' : 'User blocked and access revoked.');
+      await loadAdminDashboard();
+    } catch (err) {
+      notify(err.message);
+    }
+  } else if (action === 'delete-user') {
+    if (!confirm('Permanently delete this user account, their reports, and all connections? This cannot be undone.')) return;
+    try {
+      await api('/api/admin/users/delete', {
+        method: 'POST',
+        body: JSON.stringify({ user_id: userId }),
+      });
+      notify('User account deleted.');
+      await loadAdminDashboard();
       await loadItems();
-      openAdmin();
     } catch (err) {
       notify(err.message);
     }
   }
 });
+
+// Admin Reports Table Actions (Resolve / Delete Item)
+document.querySelector('#adminReportsTableBody')?.addEventListener('click', async (e) => {
+  const btn = e.target.closest('[data-admin-action]');
+  if (!btn) return;
+  const action = btn.dataset.adminAction;
+  const itemId = Number(btn.dataset.itemId);
+
+  if (action === 'resolve-item') {
+    try {
+      await api(`/api/items/${itemId}/status`, {
+        method: 'POST',
+        body: JSON.stringify({ status: 'Resolved' }),
+      });
+      notify('Report marked as Resolved.');
+      await loadAdminDashboard();
+      await loadItems();
+    } catch (err) {
+      notify(err.message);
+    }
+  } else if (action === 'delete-item') {
+    if (!confirm('Admin: Delete this report permanently?')) return;
+    try {
+      await api(`/api/items/${itemId}`, { method: 'DELETE' });
+      notify('Report removed by administrator.');
+      await loadAdminDashboard();
+      await loadItems();
+    } catch (err) {
+      notify(err.message);
+    }
+  }
+});
+
+// Admin Header Actions
+document.querySelector('#btnAdminExportCsv')?.addEventListener('click', async () => {
+  window.open('/api/admin/export', '_blank');
+});
+
+document.querySelector('#btnAdminRefresh')?.addEventListener('click', async () => {
+  await loadAdminDashboard();
+  notify('Admin metrics and users refreshed.');
+});
+
+document.querySelector('#adminHeaderSignOut')?.addEventListener('click', handleSignOut);
 
 // Notifications check badge
 async function checkPendingUpdates() {

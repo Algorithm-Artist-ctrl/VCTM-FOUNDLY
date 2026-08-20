@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>VCTM Foundly — Verified Campus Lost & Found</title>
-    <link rel="stylesheet" href="styles.css?v=3.9.0" />
+    <link rel="stylesheet" href="styles.css?v=4.0.0" />
   </head>
   <body>
     <div class="ambient ambient-one"></div>
@@ -117,6 +117,133 @@
           </div>
           <div class="items-grid" id="userDashboardItemsGrid">
             <!-- Populated dynamically with only this user's items -->
+          </div>
+        </div>
+      </section>
+
+      <!-- Dedicated Campus Administrator Control Center (Only shown when role === 'admin') -->
+      <section class="admin-dashboard-section hidden" id="adminDashboardSection">
+        <div class="admin-dashboard-header">
+          <div class="admin-dashboard-info">
+            <div class="admin-avatar-badge">👑</div>
+            <div>
+              <p class="eyebrow"><span></span> CAMPUS ADMINISTRATOR CONTROL CENTER</p>
+              <h1>Admin Management Console</h1>
+              <p class="admin-subtitle">
+                Institutional Administration · User Moderation &amp; Blocking · Item Auditing &amp; Security Desk
+              </p>
+            </div>
+          </div>
+          <div class="admin-header-actions">
+            <button class="button button-primary button-sm" id="btnAdminExportCsv">📥 Export Security CSV</button>
+            <button class="button button-secondary button-sm" id="btnAdminRefresh">↺ Refresh</button>
+            <button class="button button-outline button-sm" id="adminHeaderSignOut">🚪 Sign out</button>
+          </div>
+        </div>
+
+        <!-- Global Analytics Counters Strip -->
+        <div class="admin-stats-strip">
+          <article class="admin-stat-card">
+            <span class="admin-stat-icon">👥</span>
+            <div>
+              <b id="adminStatUsers">0</b>
+              <small>Registered Members</small>
+            </div>
+          </article>
+          <article class="admin-stat-card">
+            <span class="admin-stat-icon">📋</span>
+            <div>
+              <b id="adminStatReports">0</b>
+              <small>Total Reports</small>
+            </div>
+          </article>
+          <article class="admin-stat-card">
+            <span class="admin-stat-icon">🔴</span>
+            <div>
+              <b id="adminStatLost">0</b>
+              <small>Lost Items</small>
+            </div>
+          </article>
+          <article class="admin-stat-card">
+            <span class="admin-stat-icon">🟢</span>
+            <div>
+              <b id="adminStatFound">0</b>
+              <small>Found Items</small>
+            </div>
+          </article>
+          <article class="admin-stat-card">
+            <span class="admin-stat-icon">🤝</span>
+            <div>
+              <b id="adminStatResolved">0</b>
+              <small>Reunited &amp; Resolved</small>
+            </div>
+          </article>
+          <article class="admin-stat-card">
+            <span class="admin-stat-icon">💬</span>
+            <div>
+              <b id="adminStatConnections">0</b>
+              <small>Active Claims</small>
+            </div>
+          </article>
+        </div>
+
+        <!-- Admin View Switcher Tabs -->
+        <div class="admin-nav-tabs">
+          <button class="admin-tab-btn active" id="adminTabUsersBtn" data-admin-tab="users">👥 Member Management &amp; Moderation (<span id="adminTabUsersCount">0</span>)</button>
+          <button class="admin-tab-btn" id="adminTabReportsBtn" data-admin-tab="reports">📋 Campus Reports Moderation (<span id="adminTabReportsCount">0</span>)</button>
+        </div>
+
+        <!-- Tab 1: User Management Panel -->
+        <div class="admin-tab-content" id="adminUsersPanel">
+          <div class="admin-panel-search-row">
+            <input type="search" id="adminUserSearchInput" placeholder="🔍 Search users by name, email, phone, role..." autocomplete="off" />
+            <span class="admin-panel-hint">💡 Block any suspicious user to instantly revoke their access and terminate active sessions.</span>
+          </div>
+          <div class="admin-table-responsive">
+            <table class="admin-table">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Member Name</th>
+                  <th>College Email</th>
+                  <th>Campus Role</th>
+                  <th>Phone</th>
+                  <th>Reports</th>
+                  <th>Status</th>
+                  <th style="text-align: right;">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="adminUsersTableBody">
+                <!-- Populated dynamically -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Tab 2: Campus Reports Moderation Panel -->
+        <div class="admin-tab-content hidden" id="adminReportsPanel">
+          <div class="admin-panel-search-row">
+            <input type="search" id="adminReportSearchInput" placeholder="🔍 Search reports by title, category, location, reporter..." autocomplete="off" />
+            <span class="admin-panel-hint">💡 Moderate campus lost and found submissions or remove spam/resolved posts.</span>
+          </div>
+          <div class="admin-table-responsive">
+            <table class="admin-table">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Item Title</th>
+                  <th>Type</th>
+                  <th>Category</th>
+                  <th>Location</th>
+                  <th>Reported By</th>
+                  <th>Status</th>
+                  <th style="text-align: right;">Moderation</th>
+                </tr>
+              </thead>
+              <tbody id="adminReportsTableBody">
+                <!-- Populated dynamically -->
+              </tbody>
+            </table>
           </div>
         </div>
       </section>
@@ -688,6 +815,6 @@
 
     <!-- Supabase Cloud Client SDK -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="app.js?v=3.9.0"></script>
+    <script src="app.js?v=4.0.0"></script>
   </body>
 </html>

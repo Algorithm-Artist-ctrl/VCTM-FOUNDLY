@@ -409,7 +409,10 @@ class FoundlyHandler(SimpleHTTPRequestHandler):
         if not token:
             return None
         try:
-            return db.get_user_by_token(token)
+            user = db.get_user_by_token(token)
+            if user and user.get("role") == "blocked":
+                return None
+            return user
         except Exception:
             return None
 
@@ -492,15 +495,19 @@ class FoundlyHandler(SimpleHTTPRequestHandler):
                     self.send_error_json("Admin access required", 403)
                     return
                 all_items = db.get_items()
+                all_users = db._request("app_users", "GET", params={"select": "id,name,email,role,campus_role,phone,created_at", "order": "id.desc"})
+                for u in all_users:
+                    u["items_count"] = sum(1 for it in all_items if it.get("owner_id") == u["id"])
+                    u["is_blocked"] = (u.get("role") == "blocked")
                 stats = {
                     "reports": len(all_items),
                     "lost": sum(1 for x in all_items if x["type"] == "Lost"),
                     "found": sum(1 for x in all_items if x["type"] == "Found"),
                     "resolved": sum(1 for x in all_items if x.get("status") == "Resolved"),
-                    "users": len(db._request("app_users", "GET", params={"select": "id"})),
+                    "users": len(all_users),
                     "connections": len(db._request("connections", "GET", params={"select": "id"})),
                 }
-                self.send_json({"stats": stats, "items": all_items[:30]})
+                self.send_json({"stats": stats, "items": all_items, "users": all_users})
                 return
 
             # 8. Admin Export CSV
@@ -594,6 +601,10 @@ class FoundlyHandler(SimpleHTTPRequestHandler):
                 user_record = db.get_user_by_email(email)
                 if not user_record:
                     self.send_error_json("No account found with this email. Click 'Create account' to register in seconds.", 401)
+                    return
+
+                if user_record.get("role") == "blocked":
+                    self.send_error_json("Your account has been suspended by the campus administrator. Please contact the IT desk.", 403)
                     return
 
                 if email == ADMIN_EMAIL:
@@ -774,6 +785,49 @@ class FoundlyHandler(SimpleHTTPRequestHandler):
                 new_status = "Accepted" if c["status"] == "Pending" and user["id"] == c["recipient_id"] else c["status"]
                 db.update_connection_message(conn_id, new_msg, new_status)
                 self.send_json({"ok": True, "message": new_msg, "status": new_status})
+                return
+
+            # 10. Admin: Toggle User Block / Suspension
+            if path == "/api/admin/users/toggle-block":
+                user = self.get_current_user()
+                if not user or user.get("role") != "admin":
+                    self.send_error_json("Admin access required", 403)
+                    return
+                target_user_id = int(body.get("user_id", 0))
+                should_block = bool(body.get("block", True))
+                if target_user_id == user["id"]:
+                    self.send_error_json("Administrator cannot block their own account.", 400)
+                    return
+                new_role = "blocked" if should_block else "user"
+                db._request(f"app_users?id=eq.{target_user_id}", "PATCH", data={"role": new_role})
+                if should_block:
+                    try:
+                        db._request(f"app_sessions?user_id=eq.{target_user_id}", "DELETE")
+                    except Exception:
+                        pass
+                self.send_json({"ok": True, "is_blocked": should_block})
+                return
+
+            # 11. Admin: Delete User Account
+            if path == "/api/admin/users/delete":
+                user = self.get_current_user()
+                if not user or user.get("role") != "admin":
+                    self.send_error_json("Admin access required", 403)
+                    return
+                target_user_id = int(body.get("user_id", 0))
+                if target_user_id == user["id"]:
+                    self.send_error_json("Administrator cannot delete their own account.", 400)
+                    return
+                try:
+                    db._request(f"app_sessions?user_id=eq.{target_user_id}", "DELETE")
+                    db._request(f"connections?requester_id=eq.{target_user_id}", "DELETE")
+                    db._request(f"connections?recipient_id=eq.{target_user_id}", "DELETE")
+                    db._request(f"items?owner_id=eq.{target_user_id}", "DELETE")
+                    db._request(f"app_users?id=eq.{target_user_id}", "DELETE")
+                except Exception as e:
+                    self.send_error_json(f"Failed to delete user: {e}", 500)
+                    return
+                self.send_json({"ok": True})
                 return
 
             self.send_error_json("Route not found", 404)

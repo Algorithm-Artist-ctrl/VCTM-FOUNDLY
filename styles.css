@@ -1138,6 +1138,7 @@ footer p { margin: 0; }
 body:not(.is-authenticated) #matches,
 body:not(.is-authenticated) #items,
 body:not(.is-authenticated) #userHero,
+body:not(.is-authenticated) #adminDashboardSection,
 body:not(.is-authenticated) .member-nav,
 body:not(.is-authenticated) #openMyReports,
 body:not(.is-authenticated) #openConnections,
@@ -1152,6 +1153,257 @@ body.is-authenticated .quick-actions,
 body.is-authenticated .guest-nav,
 body.is-authenticated #openAuth {
   display: none !important;
+}
+
+/* Strict Admin Role Visibility: Hide student hero/matches and show Admin Control Center */
+body.is-admin #userHero,
+body.is-admin #matches,
+body.is-admin #discover,
+body.is-admin #safe-zones,
+body.is-admin #how-it-works,
+body.is-admin .quick-actions,
+body.is-admin .guest-nav,
+body.is-admin #openMyReports {
+  display: none !important;
+}
+
+body.is-admin #adminDashboardSection {
+  display: block !important;
+}
+
+body:not(.is-admin) #adminDashboardSection {
+  display: none !important;
+}
+
+/* ============================================================
+   CAMPUS ADMINISTRATOR CONTROL CENTER
+   ============================================================ */
+.admin-dashboard-section {
+  padding: 32px max(24px, calc((100vw - 1140px)/2));
+  background: #fbfaf7;
+  border-bottom: 1px solid var(--line);
+}
+
+.admin-dashboard-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.admin-dashboard-info {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+
+.admin-avatar-badge {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #18283f 0%, #0b1523 100%);
+  display: grid;
+  place-items: center;
+  font-size: 24px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+}
+
+.admin-dashboard-info h1 {
+  font-size: 26px;
+  letter-spacing: -0.8px;
+  margin: 2px 0 4px;
+}
+
+.admin-subtitle {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0;
+}
+
+.admin-header-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.admin-stats-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin-bottom: 28px;
+}
+
+.admin-stat-card {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.02);
+}
+
+.admin-stat-icon {
+  font-size: 22px;
+}
+
+.admin-stat-card b {
+  display: block;
+  font-size: 20px;
+  font-family: 'DM Mono', monospace;
+  color: var(--ink);
+}
+
+.admin-stat-card small {
+  font-size: 10px;
+  color: var(--muted);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.admin-nav-tabs {
+  display: flex;
+  gap: 12px;
+  border-bottom: 2px solid var(--line);
+  margin-bottom: 20px;
+}
+
+.admin-tab-btn {
+  border: 0;
+  background: transparent;
+  padding: 10px 16px;
+  font: 700 13px Manrope, sans-serif;
+  color: var(--muted);
+  cursor: pointer;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -2px;
+  transition: all 0.2s ease;
+}
+
+.admin-tab-btn.active {
+  color: var(--ink);
+  border-color: var(--coral);
+}
+
+.admin-panel-search-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.admin-panel-search-row input[type="search"] {
+  flex: 1;
+  max-width: 400px;
+  border: 1px solid #ccd2db;
+  border-radius: 8px;
+  padding: 10px 14px;
+  font: 12px Manrope, sans-serif;
+  outline-color: var(--coral);
+  background: #fff;
+}
+
+.admin-panel-hint {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.admin-table-responsive {
+  width: 100%;
+  overflow-x: auto;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+}
+
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 12px;
+}
+
+.admin-table th {
+  background: #f7f5f0;
+  padding: 12px 16px;
+  font-size: 10px;
+  text-transform: uppercase;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  color: #546276;
+  border-bottom: 1px solid var(--line);
+}
+
+.admin-table td {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+}
+
+.admin-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.admin-table tr:hover td {
+  background: #faf8f5;
+}
+
+.badge-active {
+  background: #dcfce7;
+  color: #15803d;
+  font: 700 10px 'DM Mono', monospace;
+  padding: 3px 8px;
+  border-radius: 4px;
+}
+
+.badge-blocked {
+  background: #fee2e2;
+  color: #b91c1c;
+  font: 700 10px 'DM Mono', monospace;
+  padding: 3px 8px;
+  border-radius: 4px;
+}
+
+.admin-btn-action {
+  border: 0;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font: 700 11px Manrope, sans-serif;
+  cursor: pointer;
+  transition: 0.15s all;
+  margin-left: 4px;
+}
+
+.admin-btn-block {
+  background: #fee2e2;
+  color: #991b1b;
+}
+.admin-btn-block:hover {
+  background: #fca5a5;
+}
+
+.admin-btn-unblock {
+  background: #dcfce7;
+  color: #166534;
+}
+.admin-btn-unblock:hover {
+  background: #bbf7d0;
+}
+
+.admin-btn-delete {
+  background: #f3f4f6;
+  color: #4b5563;
+}
+.admin-btn-delete:hover {
+  background: #fee2e2;
+  color: #991b1b;
 }
 
 /* Responsive Mobile */
