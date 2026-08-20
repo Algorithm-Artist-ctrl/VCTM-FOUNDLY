@@ -288,10 +288,21 @@ function renderItems() {
         ? '🟢 FOUND'
         : '🔴 LOST';
 
+      const isOwner = currentUser && (currentUser.id === i.owner_id || currentUser.email === i.owner_email);
+      const ownerBadgeHtml = isOwner
+        ? `<span class="card-owner-badge">⭐ YOUR POST</span>`
+        : '';
+      const actionText = isOwner
+        ? 'Manage Your Post'
+        : i.type === 'Found'
+        ? 'Claim This Item'
+        : 'Connect & Help';
+
       return `
-      <article class="item-card ${isResolved ? 'is-resolved' : ''}" data-item-id="${i.id}">
+      <article class="item-card ${isResolved ? 'is-resolved' : ''} ${isOwner ? 'is-my-post' : ''}" data-item-id="${i.id}">
         <div class="card-media">
           ${mediaHtml}
+          ${ownerBadgeHtml}
           <span class="card-status-badge ${badgeClass}">
             ${badgeText}
           </span>
@@ -305,7 +316,7 @@ function renderItems() {
           </div>
         </div>
         <div class="card-bottom">
-          <span>View Details & Connect</span>
+          <span>${actionText}</span>
           <strong>→</strong>
         </div>
       </article>
@@ -830,23 +841,78 @@ function openUserProfile() {
 
 function syncUser() {
   const signed = !!currentUser;
-  document.querySelector('#openAuth').classList.toggle('hidden', signed);
-  document.querySelector('#profileButton').classList.toggle('hidden', !signed);
-  document.querySelector('#openMyReports').classList.toggle('hidden', !signed);
-  document.querySelector('#openConnections').classList.toggle('hidden', !signed);
+  
+  // Top Navbar Navigation Toggles
+  document.querySelector('#openAuth')?.classList.toggle('hidden', signed);
+  document.querySelector('#profileButton')?.classList.toggle('hidden', !signed);
+  document.querySelector('#openMyReports')?.classList.toggle('hidden', !signed);
+  document.querySelector('#openConnections')?.classList.toggle('hidden', !signed);
+
+  // Hero Section Transformation (Guest Hero vs Logged-In User Dashboard Hero)
+  const guestHero = document.querySelector('#discover');
+  const userHero = document.querySelector('#userHero');
 
   if (signed) {
-    document.querySelector('#profileName').textContent = currentUser.name;
-    document.querySelector('#profileRole').textContent =
-      currentUser.role === 'admin' ? 'Administrator' : currentUser.campus_role;
-    document.querySelector('#avatarInitials').textContent = currentUser.name
+    guestHero?.classList.add('hidden');
+    userHero?.classList.remove('hidden');
+
+    const initials = (currentUser.name || 'User')
       .split(' ')
       .map((x) => x[0])
       .join('')
       .slice(0, 2)
       .toUpperCase();
+
+    // Top Navigation Avatar Pill
+    const profileNameEl = document.querySelector('#profileName');
+    const profileRoleEl = document.querySelector('#profileRole');
+    const avatarInitialsEl = document.querySelector('#avatarInitials');
+    if (profileNameEl) profileNameEl.textContent = currentUser.name;
+    if (profileRoleEl) profileRoleEl.textContent = currentUser.role === 'admin' ? 'Administrator' : (currentUser.campus_role || 'Student');
+    if (avatarInitialsEl) avatarInitialsEl.textContent = initials;
+
+    // User Dashboard Hero Info
+    const heroInitialsEl = document.querySelector('#heroUserInitials');
+    const heroNameEl = document.querySelector('#heroUserName');
+    const heroRoleEl = document.querySelector('#heroUserRole');
+    const heroEmailEl = document.querySelector('#heroUserEmail');
+    if (heroInitialsEl) heroInitialsEl.textContent = initials;
+    if (heroNameEl) heroNameEl.textContent = currentUser.name;
+    if (heroRoleEl) heroRoleEl.textContent = currentUser.role === 'admin' ? 'Administrator' : (currentUser.campus_role || 'Student');
+    if (heroEmailEl) heroEmailEl.textContent = currentUser.email;
+
+    // Real-Time Dashboard Metrics
+    const myReportsCount = items.filter((i) => i.owner_id === currentUser.id || i.owner_email === currentUser.email).length;
+    const myMatchesCount = matches.filter((m) => 
+      m.lost_item?.owner_id === currentUser.id || m.lost_item?.owner_email === currentUser.email ||
+      m.found_item?.owner_id === currentUser.id || m.found_item?.owner_email === currentUser.email
+    ).length;
+
+    const metricReportsEl = document.querySelector('#metricMyReportsCount');
+    const metricMatchesEl = document.querySelector('#metricMyMatchesCount');
+    const metricMessagesEl = document.querySelector('#metricMyMessagesCount');
+    if (metricReportsEl) metricReportsEl.textContent = myReportsCount;
+    if (metricMatchesEl) metricMatchesEl.textContent = myMatchesCount;
+    if (metricMessagesEl) metricMessagesEl.textContent = connections.length;
+  } else {
+    guestHero?.classList.remove('hidden');
+    userHero?.classList.add('hidden');
   }
+
+  // Re-render feed items to update owner badges and buttons
+  renderItems();
 }
+
+// User Dashboard Metric Cards Clicks
+document.querySelector('#btnMetricReports')?.addEventListener('click', openMyReports);
+document.querySelector('#btnMetricMatches')?.addEventListener('click', () => {
+  const matchesSection = document.querySelector('#smartMatchesSection');
+  if (matchesSection) {
+    matchesSection.scrollIntoView({ behavior: 'smooth' });
+  }
+});
+document.querySelector('#btnMetricMessages')?.addEventListener('click', openConnections);
+document.querySelector('#btnMetricProfile')?.addEventListener('click', openUserProfile);
 
 async function handleSignOut() {
   try {

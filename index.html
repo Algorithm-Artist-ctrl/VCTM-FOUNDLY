@@ -45,7 +45,63 @@
     </header>
 
     <main id="home">
-      <!-- Hero Section -->
+      <!-- User Logged-In Dashboard Hero (Shown when authenticated) -->
+      <section class="user-hero hidden" id="userHero">
+        <div class="user-hero-header">
+          <div class="user-welcome-info">
+            <div class="user-avatar-badge" id="heroUserInitials">TK</div>
+            <div>
+              <p class="eyebrow"><span></span> CAMPUS MEMBER DASHBOARD</p>
+              <h1>Welcome back, <em id="heroUserName">Tarun Kushwah</em> 👋</h1>
+              <p class="user-hero-subtitle">
+                <span class="pill-badge status-open" id="heroUserRole">Student</span> · <span id="heroUserEmail">tarun@vctm.in</span> · Verified Institutional Account
+              </p>
+            </div>
+          </div>
+          <div class="user-quick-buttons">
+            <button class="button button-primary" data-open-report="Lost">＋ Report Lost Item</button>
+            <button class="button button-secondary" data-open-report="Found">＋ Report Found Item</button>
+          </div>
+        </div>
+
+        <!-- Real-Time User Metrics Cards Strip -->
+        <div class="user-metrics-strip">
+          <article class="metric-card" id="btnMetricReports">
+            <span class="metric-icon">📋</span>
+            <div>
+              <b id="metricMyReportsCount">0</b>
+              <small>My Active Posts</small>
+            </div>
+            <strong>→</strong>
+          </article>
+          <article class="metric-card" id="btnMetricMatches">
+            <span class="metric-icon">⚡</span>
+            <div>
+              <b id="metricMyMatchesCount">0</b>
+              <small>Smart Match Alerts</small>
+            </div>
+            <strong>→</strong>
+          </article>
+          <article class="metric-card" id="btnMetricMessages">
+            <span class="metric-icon">💬</span>
+            <div>
+              <b id="metricMyMessagesCount">0</b>
+              <small>Inbox & Claims</small>
+            </div>
+            <strong>→</strong>
+          </article>
+          <article class="metric-card member-status-card" id="btnMetricProfile">
+            <span class="metric-icon">🛡️</span>
+            <div>
+              <b>Active</b>
+              <small>Account Profile</small>
+            </div>
+            <strong>⚙</strong>
+          </article>
+        </div>
+      </section>
+
+      <!-- Guest Hero Section (Shown when logged out) -->
       <section class="hero" id="discover">
         <div class="hero-copy">
           <p class="eyebrow"><span></span> VERIFIED VCTM CAMPUS NETWORK</p>
