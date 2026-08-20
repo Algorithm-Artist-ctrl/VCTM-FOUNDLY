@@ -90,7 +90,7 @@ USING (auth.uid() = sender_id OR auth.uid() = recipient_id);
 -- 7. Seed Sample Items
 INSERT INTO public.items (name, category, location, item_date, description, type, status, proof_question, owner_name, owner_email, owner_role)
 VALUES 
-('Silver Dell Inspiron Laptop', 'Electronics', 'Engineering Block Lab 204', CURRENT_DATE, '15-inch silver laptop with Python sticker on back.', 'Lost', 'Open', 'What is the lockscreen wallpaper?', 'Tarun Kumar', 'tarun@vctm.in', 'Student'),
+('Silver Dell Inspiron Laptop', 'Electronics', 'Engineering Block Lab 204', CURRENT_DATE, '15-inch silver laptop with Python sticker on back.', 'Lost', 'Open', 'What is the lockscreen wallpaper?', 'Tarun Kushwah', 'tarun@vctm.in', 'Student'),
 ('Dell Laptop in Black Sleeve', 'Electronics', 'Computer Lab 2nd Floor', CURRENT_DATE, 'Found silver laptop inside a neoprene black sleeve.', 'Found', 'Open', 'What brand is the charger?', 'Campus Security', 'security@vctm.in', 'Staff member'),
 ('Titan Gold Watch', 'Accessories', 'Library 1st Floor', CURRENT_DATE, 'Analog gold dial Titan watch with metal strap.', 'Lost', 'Open', 'What is the strap color?', 'Pooja Sharma', 'pooja@vctm.in', 'Faculty'),
 ('Prescription Glasses', 'Accessories', 'Seminar Hall Block B', CURRENT_DATE - 1, 'Black rectangular RayBan frame in black leather case.', 'Found', 'Open', 'What brand is on the hinge?', 'Admin Desk', 'admin@vctm.in', 'Staff member');
