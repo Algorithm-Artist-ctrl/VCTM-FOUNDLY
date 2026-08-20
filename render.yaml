@@ -7,4 +7,4 @@ services:
     plan: free
     envVars:
       - key: ALLOWED_DOMAINS
-        value: vctm.in,vctm.edu,gmail.com,foundly.test
+        value: vctm.in,vctm.edu

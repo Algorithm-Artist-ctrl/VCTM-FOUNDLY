@@ -963,17 +963,25 @@ if (authForm) {
     errElem.textContent = '';
 
     try {
+      const email = (d.get('email') || '').trim().toLowerCase();
+      if (authMode === 'signup') {
+        if (!email.endsWith('@vctm.in') && !email.endsWith('@vctm.edu')) {
+          errElem.textContent = 'Please use your official college email (@vctm.in or @vctm.edu).';
+          return;
+        }
+      }
+
       const payload =
         authMode === 'signup'
           ? {
               name: d.get('fullName'),
               campus_role: d.get('campusRole'),
               phone: d.get('phone'),
-              email: d.get('email'),
+              email: email,
               password: d.get('password'),
             }
           : {
-              email: d.get('email'),
+              email: email,
               password: d.get('password'),
             };
 

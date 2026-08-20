@@ -35,11 +35,10 @@ SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://utwodwtccrmibmdwtpmc.supa
 DEFAULT_KEY_B64 = "c2Jfc2VjcmV0X1hkSU1xR0l2NXkxc2JQZFBlb1JLY2dfM0hPMTNmbFU="
 SUPABASE_SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or base64.b64decode(DEFAULT_KEY_B64).decode("utf-8")
 
-raw_domains = os.environ.get("ALLOWED_DOMAINS", "vctm.in,vctm.edu,gmail.com,foundly.test")
+raw_domains = os.environ.get("ALLOWED_DOMAINS", "vctm.in,vctm.edu")
 COLLEGE_DOMAINS = [d.strip().lower() for d in raw_domains.split(",") if d.strip()]
-ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@foundly.test").lower()
+ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@vctm.in").lower()
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin123")
-ALLOW_ALL_DOMAINS = "*" in COLLEGE_DOMAINS or os.environ.get("ALLOW_ALL_DOMAINS", "").lower() in ("true", "1")
 
 # Rate limiting
 RATE_LIMITS = defaultdict(list)
@@ -78,7 +77,7 @@ def is_college_email(email: str) -> bool:
     if not email or "@" not in email:
         return False
     email = email.lower().strip()
-    return bool(re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email))
+    return any(email.endswith("@" + domain) for domain in COLLEGE_DOMAINS)
 
 
 # -------------------------------------------------------------
