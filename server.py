@@ -27,13 +27,33 @@ import urllib.request
 import urllib.error
 
 ROOT = Path(__file__).parent.resolve()
+
+# Auto-load local .env file in development if present
+def load_env_file(filepath: Path):
+    if not filepath.exists():
+        return
+    try:
+        with open(filepath, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                k, v = line.split("=", 1)
+                k = k.strip()
+                v = v.strip().strip("'\"")
+                if k and k not in os.environ:
+                    os.environ[k] = v
+    except Exception as e:
+        print(f"[Notice] Could not parse .env: {e}")
+
+load_env_file(ROOT / ".env")
+
 PORT = int(os.environ.get("PORT", 8000))
 HOST = os.environ.get("HOST", "0.0.0.0")
 
-# Supabase Cloud Project Configuration
+# Supabase Cloud Project Configuration (Read from Render Environment Variables)
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://utwodwtccrmibmdwtpmc.supabase.co")
-DEFAULT_KEY_B64 = "c2Jfc2VjcmV0X1hkSU1xR0l2NXkxc2JQZFBlb1JLY2dfM0hPMTNmbFU="
-SUPABASE_SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or base64.b64decode(DEFAULT_KEY_B64).decode("utf-8")
+SUPABASE_SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
 
 raw_domains = os.environ.get("ALLOWED_DOMAINS", "vctm.in,vctm.edu")
 COLLEGE_DOMAINS = [d.strip().lower() for d in raw_domains.split(",") if d.strip()]
@@ -89,6 +109,9 @@ class SupabaseDB:
         self.service_key = service_key
 
     def _request(self, endpoint: str, method: str = "GET", data: Optional[Dict] = None, params: Optional[Dict] = None) -> Any:
+        if not self.service_key:
+            raise Exception("SUPABASE_SERVICE_ROLE_KEY is missing. Please add it under Render -> Environment.")
+
         url = f"{self.base_url}/rest/v1/{endpoint}"
         if params:
             query_str = "&".join(f"{k}={quote(str(v), safe='.*,')}" for k, v in params.items())
