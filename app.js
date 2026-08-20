@@ -234,14 +234,22 @@ if (removePhotoBtn) {
 // -------------------------------------------------------------
 // 1. RENDER EXPLORE ITEMS FEED
 // -------------------------------------------------------------
+function isItemOwner(item) {
+  if (!currentUser || !item) return false;
+  const matchId = currentUser.id != null && item.owner_id != null && String(currentUser.id) === String(item.owner_id);
+  const matchEmail = !!(currentUser.email && item.owner_email && currentUser.email.trim().toLowerCase() === item.owner_email.trim().toLowerCase());
+  return matchId || matchEmail;
+}
+
 function renderItems() {
+  const grid = document.querySelector('#itemsGrid');
   if (!grid) return;
   const q = (searchInput?.value || '').trim().toLowerCase();
 
   const filtered = items.filter((i) => {
     let matchType = true;
     if (currentFilter === 'MyPosts') {
-      matchType = currentUser && (i.owner_id === currentUser.id || i.owner_email === currentUser.email);
+      matchType = isItemOwner(i);
     } else if (currentFilter !== 'All') {
       matchType = i.type === currentFilter;
     }
@@ -294,7 +302,7 @@ function renderItems() {
         ? '🟢 FOUND'
         : '🔴 LOST';
 
-      const isOwner = currentUser && (currentUser.id === i.owner_id || currentUser.email === i.owner_email);
+      const isOwner = isItemOwner(i);
       let ownerBadgeHtml = '';
       let actionText = '';
       let actionClass = '';
@@ -488,7 +496,7 @@ function openItemDetail(itemId) {
 
   // Actions
   const actionsBox = document.querySelector('#detailActions');
-  const isOwner = currentUser && (currentUser.id === item.owner_id || currentUser.email === item.owner_email);
+  const isOwner = isItemOwner(item);
   const isAdmin = currentUser && currentUser.role === 'admin';
 
   if (!currentUser) {
@@ -499,7 +507,7 @@ function openItemDetail(itemId) {
     `;
     document.querySelector('#btnDetailSignIn')?.addEventListener('click', () => {
       itemDetailDialog.close();
-      authDialog.showModal();
+      openAuthModal('login');
     });
   } else if (isOwner || isAdmin) {
     actionsBox.innerHTML = `
@@ -801,12 +809,18 @@ document.querySelector('#connectionsList')?.addEventListener('click', async (e) 
 // -------------------------------------------------------------
 function openConnection(itemId) {
   if (!currentUser) {
-    authDialog.showModal();
+    openAuthModal('login');
     notify('Please sign in to connect with the reporter.');
     return;
   }
   const item = items.find((x) => x.id === itemId);
   if (!item) return;
+
+  if (isItemOwner(item)) {
+    openMyReports();
+    notify('You are the reporter of this listing. You can manage it here.');
+    return;
+  }
 
   connectForm.itemId.value = itemId;
   const proofPrompt = document.querySelector('#connectProofPrompt');
@@ -912,10 +926,9 @@ function syncUser() {
     if (heroEmailEl) heroEmailEl.textContent = currentUser.email;
 
     // Real-Time Dashboard Metrics
-    const myReportsCount = items.filter((i) => i.owner_id === currentUser.id || i.owner_email === currentUser.email).length;
+    const myReportsCount = items.filter((i) => isItemOwner(i)).length;
     const myMatchesCount = matches.filter((m) => 
-      m.lost_item?.owner_id === currentUser.id || m.lost_item?.owner_email === currentUser.email ||
-      m.found_item?.owner_id === currentUser.id || m.found_item?.owner_email === currentUser.email
+      isItemOwner(m.lost_item) || isItemOwner(m.found_item)
     ).length;
 
     const metricReportsEl = document.querySelector('#metricMyReportsCount');
