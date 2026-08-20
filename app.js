@@ -560,7 +560,7 @@ document.querySelector('#closeItemDetail')?.addEventListener('click', () => item
 // -------------------------------------------------------------
 async function openMyReports() {
   if (!currentUser) {
-    authDialog.showModal();
+    openAuthModal('login');
     notify('Please sign in to view your reports.');
     return;
   }
@@ -579,15 +579,19 @@ async function openMyReports() {
           return `
           <article class="my-report-card">
             <div class="my-report-info">
-              <b>${escapeHtml(it.name)} (${escapeHtml(it.type)})</b>
-              <small>⌖ ${escapeHtml(it.location)} · ${escapeHtml(itDate)} · 💬 ${it.connections_count || 0} claims/matches</small>
+              <b>${escapeHtml(it.name)}</b>
+              <small>⌖ ${escapeHtml(it.location)} · ${itDate}</small>
+              <div style="margin-top:4px;">
+                <span class="pill-badge" style="background:${it.type === 'Found' ? '#eaf5ef' : '#fdeee9'}; color:${it.type === 'Found' ? 'var(--green)' : 'var(--coral)'};">${it.type.toUpperCase()}</span>
+                <span class="pill-badge ${isResolved ? 'status-resolved' : 'status-open'}">${isResolved ? 'RESOLVED' : 'ACTIVE'}</span>
+              </div>
             </div>
             <div class="my-report-actions">
-              <button class="button button-sm button-secondary" data-my-toggle-id="${it.id}" data-current-status="${it.status}">
-                ${isResolved ? '↺ Reopen' : '✓ Resolve'}
+              <button class="button button-secondary button-sm" data-toggle-my-item="${it.id}" data-my-status="${it.status || 'Open'}">
+                ${isResolved ? '↺ Reopen' : '✓ Mark Resolved'}
               </button>
-              <button class="button button-sm button-danger" data-my-delete-id="${it.id}">
-                🗑
+              <button class="button button-danger button-sm" data-delete-my-item="${it.id}">
+                🗑 Delete
               </button>
             </div>
           </article>
@@ -975,16 +979,28 @@ document.querySelector('#profileConnectionsBtn')?.addEventListener('click', () =
   openConnections();
 });
 
-// Auth Form Tabs
+// Auth Form Tabs & Modal Control
 function setAuthMode(mode) {
   authMode = mode;
   document.querySelectorAll('.auth-tab').forEach((b) => b.classList.toggle('active', b.dataset.authMode === mode));
   document.querySelectorAll('.signup-field').forEach((x) => x.classList.toggle('show', mode === 'signup'));
-  document.querySelector('#authForm button[type="submit"]').innerHTML = `${mode === 'login' ? 'Sign in' : 'Create account'} <span>→</span>`;
-  document.querySelector('#authError').textContent = '';
+  const submitBtn = document.querySelector('#authForm button[type="submit"]');
+  if (submitBtn) {
+    submitBtn.innerHTML = `${mode === 'login' ? 'Sign in' : 'Create account'} <span>→</span>`;
+  }
+  const errElem = document.querySelector('#authError');
+  if (errElem) errElem.textContent = '';
 }
 
-document.querySelector('#openAuth')?.addEventListener('click', () => authDialog.showModal());
+function openAuthModal(mode = 'login') {
+  setAuthMode(mode);
+  authForm?.reset();
+  const errElem = document.querySelector('#authError');
+  if (errElem) errElem.textContent = '';
+  authDialog.showModal();
+}
+
+document.querySelector('#openAuth')?.addEventListener('click', () => openAuthModal('login'));
 document.querySelector('.auth-close')?.addEventListener('click', () => authDialog.close());
 document.querySelector('#closeAuthBtn')?.addEventListener('click', () => authDialog.close());
 document.querySelector('#authBackBtn')?.addEventListener('click', () => authDialog.close());
@@ -1030,13 +1046,10 @@ if (authForm) {
       authDialog.close();
       authForm.reset();
       syncUser();
-      notify(`Welcome, ${currentUser.name}!`);
+      notify(`Welcome back, ${currentUser.name}!`);
       if (currentUser.role === 'admin') openAdmin();
     } catch (err) {
       errElem.textContent = err.message;
-      if (err.message.includes('Create account')) {
-        setTimeout(() => setAuthMode('signup'), 1200);
-      }
     }
   });
 }
@@ -1083,7 +1096,7 @@ function setType(type) {
 
 function openReport(type) {
   if (!currentUser) {
-    authDialog.showModal();
+    openAuthModal('login');
     notify('Please sign in to publish a report.');
     return;
   }
