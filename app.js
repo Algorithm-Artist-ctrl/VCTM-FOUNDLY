@@ -736,20 +736,33 @@ async function openConnections() {
             ${
               isAccepted
                 ? `
-              <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line);">
-                <small style="font-weight: 700; color: var(--green);">✓ Contact Information Unlocked:</small>
-                <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px;">
-                  <a class="btn-contact-action" href="mailto:${escapeHtml(otherEmail)}?subject=VCTM Foundly: ${encodeURIComponent(c.item_name)}">
-                    ✉️ Email: ${escapeHtml(otherEmail)}
-                  </a>
+              <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #e2e8f0;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                  <small style="font-weight: 800; color: var(--green); font-size: 11px;">✓ Verified Direct Contact Unlocked:</small>
+                  <small style="font-size: 10px; color: var(--muted);">Click below to chat or call directly</small>
+                </div>
+                <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px;">
                   ${
                     otherPhone
-                      ? `<a class="btn-contact-action" href="tel:${escapeHtml(otherPhone)}">📞 Call: ${escapeHtml(otherPhone)}</a>`
+                      ? `
+                    <a class="btn-contact-action btn-whatsapp" target="_blank" rel="noopener" href="https://wa.me/${(otherPhone.replace(/[^0-9]/g, '').length === 10 ? '91' : '') + otherPhone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(`Hi ${otherName}, I am contacting you regarding '${c.item_name}' on VCTM Foundly.`)}">
+                      💬 WhatsApp Message
+                    </a>
+                    <a class="btn-contact-action btn-call" href="tel:${escapeHtml(otherPhone)}">
+                      📞 Call: ${escapeHtml(otherPhone)}
+                    </a>
+                    <a class="btn-contact-action btn-sms" href="sms:${escapeHtml(otherPhone.replace(/[^0-9]/g, ''))}">
+                      📱 SMS Text
+                    </a>
+                  `
                       : ''
                   }
+                  <a class="btn-contact-action btn-email" href="mailto:${escapeHtml(otherEmail)}?subject=VCTM Foundly: ${encodeURIComponent(c.item_name)}">
+                    ✉️ Email: ${escapeHtml(otherEmail)}
+                  </a>
                 </div>
                 <div class="connection-reply-box">
-                  <input type="text" placeholder="Type a message..." class="reply-msg-input" data-reply-conn-id="${c.id}" />
+                  <input type="text" placeholder="Type a message to reply on the website..." class="reply-msg-input" data-reply-conn-id="${c.id}" />
                   <button type="button" class="btn-send-reply" data-reply-conn-id="${c.id}">Send 💬</button>
                 </div>
               </div>
@@ -818,6 +831,25 @@ document.querySelector('#connectionsList')?.addEventListener('click', async (e) 
     const connId = sendReplyBtn.dataset.replyConnId;
     const input = document.querySelector(`.reply-msg-input[data-reply-conn-id="${connId}"]`);
     const text = input?.value.trim();
+    if (!text) return;
+    try {
+      await api(`/api/connections/${connId}/message`, {
+        method: 'POST',
+        body: JSON.stringify({ message: text }),
+      });
+      notify('Message sent!');
+      openConnections();
+    } catch (err) {
+      notify(err.message);
+    }
+  }
+});
+
+document.querySelector('#connectionsList')?.addEventListener('keydown', async (e) => {
+  if (e.key === 'Enter' && e.target.classList.contains('reply-msg-input')) {
+    e.preventDefault();
+    const connId = e.target.dataset.replyConnId;
+    const text = e.target.value.trim();
     if (!text) return;
     try {
       await api(`/api/connections/${connId}/message`, {

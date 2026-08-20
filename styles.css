@@ -1044,11 +1044,18 @@ dialog form { padding: 28px; }
 .connection-card p { font-size: 11px; line-height: 1.5; color: #404f63; margin: 8px 0; }
 .connection-actions { display: flex; gap: 8px; margin-top: 10px; }
 .btn-contact-action {
-  display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 6px; font: 700 11px Manrope; text-decoration: none; border: 1px solid var(--line); background: #fff; color: var(--ink);
+  display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 8px; font: 700 11px Manrope; text-decoration: none; border: 1px solid var(--line); background: #fff; color: var(--ink); transition: 0.2s all;
 }
+.btn-contact-action:hover { transform: translateY(-1px); box-shadow: 0 4px 10px rgba(0,0,0,0.06); }
+.btn-whatsapp { background: #25d366 !important; color: #ffffff !important; border-color: #25d366 !important; }
+.btn-whatsapp:hover { background: #1ebe5d !important; }
+.btn-call { background: #fdf3e2 !important; color: #b44d12 !important; border-color: #fbd38d !important; }
+.btn-sms { background: #ebf8ff !important; color: #2b6cb0 !important; border-color: #bee3f8 !important; }
+.btn-email { background: #f0f4f8 !important; color: #102a43 !important; border-color: #d9e2ec !important; }
 .connection-reply-box { display: flex; gap: 6px; margin-top: 10px; }
-.connection-reply-box input { flex: 1; border: 1px solid #ccd2db; border-radius: 6px; padding: 8px 10px; font: 12px Manrope; }
-.connection-reply-box button { border: 0; background: var(--coral); color: #fff; font: 700 11px Manrope; border-radius: 6px; padding: 0 12px; cursor: pointer; }
+.connection-reply-box input { flex: 1; border: 1px solid #ccd2db; border-radius: 6px; padding: 8px 10px; font: 12px Manrope; outline-color: var(--coral); }
+.connection-reply-box button { border: 0; background: var(--coral); color: #fff; font: 700 11px Manrope; border-radius: 6px; padding: 0 14px; cursor: pointer; transition: 0.2s background; }
+.connection-reply-box button:hover { background: #de5640; }
 
 /* User Profile */
 .profile-card-detail { display: flex; gap: 14px; align-items: center; background: #faf9f6; border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin: 16px 0; }
