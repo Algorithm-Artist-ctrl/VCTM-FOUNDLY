@@ -1009,39 +1009,49 @@ dialog form { padding: 28px; }
 .admin-row em.found { background: #edf5f0; color: var(--green); }
 
 /* Auth Dialog */
-#authDialog { max-width: 780px; }
-.auth-panel { display: grid; grid-template-columns: 0.9fr 1.1fr; min-height: 440px; }
+#authDialog { max-width: 780px; position: relative; }
+.auth-panel { display: grid; grid-template-columns: 0.9fr 1.1fr; min-height: 440px; position: relative; }
 .auth-intro { background: var(--deep); color: #fff; padding: 38px; position: relative; }
 .auth-intro .brand { color: #fff; }
 .auth-intro .eyebrow { color: #b9c7d5; margin-top: 45px; }
 .auth-intro h2 { font-size: 32px; letter-spacing: -2px; margin: 0 0 12px; }
 .auth-intro h2 em { color: #f49989; }
 .auth-intro > p:not(.eyebrow) { font-size: 12px; line-height: 1.7; color: #b9c7d5; }
-.auth-close { position: absolute; right: 12px; top: 12px; background: rgba(255,255,255,0.15); color: white; }
+.auth-close {
+  position: absolute;
+  right: 14px;
+  top: 14px;
+  background: #f0eee9;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  z-index: 30;
+  transition: 0.2s background-color, 0.2s color, 0.2s transform;
+}
+.auth-close:hover {
+  background: #e2ded5;
+  color: var(--coral);
+  transform: scale(1.08);
+}
 .campus-badge {
-  margin-top: 18px;
-  padding: 8px 10px;
+  margin-top: 24px;
+  padding: 10px 12px;
   background: rgba(255,255,255,0.08);
   border: 1px solid rgba(255,255,255,0.12);
   border-radius: 7px;
-  font-size: 9px;
+  font-size: 10px;
   color: #d9e7df;
 }
-.demo-access {
-  background: rgba(255,255,255,0.07);
-  border: 1px solid rgba(255,255,255,0.12);
-  border-radius: 8px;
-  margin-top: 12px;
-  padding: 10px;
-  display: grid;
-  gap: 3px;
-  font: 10px 'DM Mono';
-  color: #ced9e5;
-}
-.demo-access b { font: 700 10px Manrope; color: #fff; }
 
 .auth-form-wrap { padding: 36px; display: flex; flex-direction: column; }
-.auth-tabs { display: flex; gap: 20px; border-bottom: 1px solid var(--line); margin-bottom: 20px; }
+.auth-tabs { display: flex; gap: 20px; border-bottom: 1px solid var(--line); margin-bottom: 20px; padding-right: 40px; }
 .auth-tab {
   border: 0;
   border-bottom: 2px solid transparent;
@@ -1067,9 +1077,12 @@ dialog form { padding: 28px; }
 .signup-field { display: none !important; }
 .signup-field.show { display: block !important; }
 .auth-sub-row { display: flex; justify-content: flex-end; margin-top: 8px; }
-.auth-error { height: 16px; color: #c85043; font-size: 11px; margin: 8px 0 0; }
+.auth-error { min-height: 16px; color: #c85043; font-size: 11px; margin: 8px 0 0; }
 .auth-submit { width: 100%; justify-content: space-between; margin-top: 10px; }
-.auth-note { text-align: center; font-size: 9px; color: var(--muted); margin: 12px 0 0; }
+.auth-footer-bar { text-align: center; margin-top: 14px; }
+.auth-back-link { font-size: 11px; color: var(--muted); }
+.auth-back-link:hover { color: var(--coral); }
+.auth-note { text-align: center; font-size: 9px; color: var(--muted); margin: 8px 0 0; }
 
 /* Toast Notifications */
 .toast {

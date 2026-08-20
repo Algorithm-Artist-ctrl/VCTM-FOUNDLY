@@ -730,9 +730,26 @@ if (reportForm) {
 // Auth Dialog handlers
 document.querySelector('#openAuth')?.addEventListener('click', () => authDialog.showModal());
 document.querySelector('.auth-close')?.addEventListener('click', () => authDialog.close());
+document.querySelector('#closeAuthBtn')?.addEventListener('click', () => authDialog.close());
+document.querySelector('#authBackBtn')?.addEventListener('click', () => authDialog.close());
 document.querySelectorAll('.auth-tab').forEach((b) =>
   b.addEventListener('click', () => setAuthMode(b.dataset.authMode))
 );
+
+// Click-outside (backdrop click) to close any open dialog
+document.querySelectorAll('dialog').forEach((dlg) => {
+  dlg.addEventListener('click', (e) => {
+    const rect = dlg.getBoundingClientRect();
+    const isInDialog =
+      rect.top <= e.clientY &&
+      e.clientY <= rect.top + rect.height &&
+      rect.left <= e.clientX &&
+      e.clientX <= rect.left + rect.width;
+    if (!isInDialog) {
+      dlg.close();
+    }
+  });
+});
 
 if (authForm) {
   authForm.addEventListener('submit', async (e) => {

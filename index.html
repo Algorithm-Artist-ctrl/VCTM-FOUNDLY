@@ -365,18 +365,13 @@
     <!-- Auth Dialog (Sign In / Register) -->
     <dialog id="authDialog">
       <div class="auth-panel">
-        <button class="close auth-close" aria-label="Close">×</button>
+        <button class="auth-close" id="closeAuthBtn" aria-label="Close" title="Back to website">✕</button>
         <div class="auth-intro">
           <a class="brand" href="#home"><span class="brand-mark">F</span><span>VCTM Foundly</span></a>
           <p class="eyebrow"><span></span> VERIFIED ACCESS</p>
           <h2>Every reunion<br /><em>starts here.</em></h2>
-          <p>Foundly is a secure network for Vivekananda College. Sign in with your institutional or verified email to report and claim items.</p>
+          <p>Foundly is a secure, private network for Vivekananda College of Technology and Management. Sign in with your institutional email to report and claim lost items.</p>
           <div class="campus-badge">✓ Students · Faculty · Staff · Campus workers</div>
-          <div class="demo-access">
-            <b>Admin Demo Credentials:</b>
-            <span>admin@foundly.test</span>
-            <span>Password: admin123</span>
-          </div>
         </div>
         <div class="auth-form-wrap">
           <div class="auth-tabs">
@@ -398,7 +393,7 @@
               </select>
             </label>
             <label class="signup-field">
-              Phone Number <small>(Optional · for handoffs)</small>
+              Phone Number <small>(Optional · for safe handoffs)</small>
               <input name="phone" type="tel" placeholder="+91 9876543210" />
             </label>
             <label>
@@ -415,6 +410,9 @@
             <p class="auth-error" id="authError"></p>
             <button class="button button-primary auth-submit" type="submit">Sign in <span>→</span></button>
           </form>
+          <div class="auth-footer-bar">
+            <button type="button" class="text-link auth-back-link" id="authBackBtn">← Back to website</button>
+          </div>
           <p class="auth-note">Verified college network · Protected sessions</p>
         </div>
       </div>
