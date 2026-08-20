@@ -1,6 +1,6 @@
 /**
- * VCTM Foundly - Enterprise Campus Lost & Found Client.
- * Tabbed Hub: Feed, Smart Matches, My Reports, Messenger Inbox, and Safe Points.
+ * VCTM Foundly - Verified Campus Lost & Found System.
+ * Single-Page Flow with Live Smart Matches, Photo Upload, In-App Messenger, and Account Management.
  */
 
 let items = [];
@@ -8,10 +8,8 @@ let matches = [];
 let connections = [];
 let currentUser = null;
 let currentFilter = 'All';
-let currentStatusFilter = 'Open';
 let currentCategoryFilter = 'All';
-let currentTab = 'feed';
-let activeChatConnectionId = null;
+let currentStatusFilter = 'Open';
 let reportType = 'Lost';
 let authMode = 'login';
 let currentUploadedImageBase64 = null;
@@ -30,6 +28,8 @@ const reportForm = document.querySelector('#reportForm');
 const itemDetailDialog = document.querySelector('#itemDetailDialog');
 const connectDialog = document.querySelector('#connectDialog');
 const connectForm = document.querySelector('#connectForm');
+const myReportsDialog = document.querySelector('#myReportsDialog');
+const connectionsDialog = document.querySelector('#connectionsDialog');
 const authDialog = document.querySelector('#authDialog');
 const authForm = document.querySelector('#authForm');
 const userProfileDialog = document.querySelector('#userProfileDialog');
@@ -45,7 +45,7 @@ const photoPreviewBox = document.querySelector('#photoPreviewBox');
 const photoPreviewImg = document.querySelector('#photoPreviewImg');
 const removePhotoBtn = document.querySelector('#removePhotoBtn');
 
-// Helper: Escape HTML strings
+// Helper: Escape HTML
 const escapeHtml = (str) =>
   String(str ?? '').replace(/[&<>'"]/g, (c) => ({
     '&': '&amp;',
@@ -55,7 +55,7 @@ const escapeHtml = (str) =>
     '"': '&quot;',
   }[c]));
 
-// Helper: Unified API Fetcher with Dual Token/Cookie Auth
+// Helper: API Fetcher with Dual Token/Cookie Auth
 const api = async (path, options = {}) => {
   const token = localStorage.getItem('foundly_token');
   const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
@@ -87,7 +87,7 @@ const api = async (path, options = {}) => {
   return data;
 };
 
-// Helper: Toast Notifications
+// Helper: Toast Notification
 const notify = (msg) => {
   if (!toast) return;
   toast.textContent = msg;
@@ -111,34 +111,7 @@ const categoryEmoji = (cat) =>
   }[cat] || '📦');
 
 // -------------------------------------------------------------
-// TAB SWITCHING & ROUTING
-// -------------------------------------------------------------
-function switchTab(tabId) {
-  currentTab = tabId;
-  document.querySelectorAll('.nav-tab').forEach((b) => {
-    b.classList.toggle('active', b.dataset.tab === tabId);
-  });
-  document.querySelectorAll('.tab-panel').forEach((p) => {
-    p.classList.toggle('active', p.id === `tab-${tabId}`);
-  });
-
-  if (tabId === 'matches') loadSmartMatches();
-  if (tabId === 'my-reports') loadMyReports();
-  if (tabId === 'messages') loadInbox();
-  if (tabId === 'feed') renderItems();
-}
-
-document.querySelectorAll('.nav-tab[data-tab]').forEach((b) => {
-  b.addEventListener('click', () => switchTab(b.dataset.tab));
-});
-document.querySelector('#btnJumpMatches')?.addEventListener('click', () => switchTab('matches'));
-document.querySelector('#brandLogo')?.addEventListener('click', (e) => {
-  e.preventDefault();
-  switchTab('feed');
-});
-
-// -------------------------------------------------------------
-// PHOTO UPLOAD & CANVAS RESIZE
+// PHOTO UPLOAD & RESIZE
 // -------------------------------------------------------------
 function processImageFile(file) {
   if (!file || !file.type.startsWith('image/')) {
@@ -228,7 +201,7 @@ if (removePhotoBtn) {
 }
 
 // -------------------------------------------------------------
-// 1. BROWSE FEED & ITEMS RENDERING
+// 1. RENDER EXPLORE ITEMS FEED
 // -------------------------------------------------------------
 function renderItems() {
   if (!grid) return;
@@ -257,7 +230,7 @@ function renderItems() {
       <div class="empty">
         <p style="font-size: 32px; margin-bottom: 8px;">🔍</p>
         <b>No matching reports found</b>
-        <p style="margin-top: 5px;">Try adjusting your search terms or filters, or be the first to report this item.</p>
+        <p style="margin-top: 5px;">Try adjusting your search terms or filters, or post a new report.</p>
       </div>
     `;
     return;
@@ -273,13 +246,13 @@ function renderItems() {
 
       return `
       <article class="item-card ${isResolved ? 'is-resolved' : ''}" data-item-id="${i.id}">
-        <div class="card-image">
+        <div class="card-media">
           ${mediaHtml}
           <span class="card-status-badge ${isResolved ? 'resolved' : 'open'}">
             ${isResolved ? 'RESOLVED' : i.type.toUpperCase()}
           </span>
         </div>
-        <div class="card-content">
+        <div class="card-body">
           <p class="category">${escapeHtml(i.category.toUpperCase())}</p>
           <h3>${escapeHtml(i.name)}</h3>
           <div class="card-meta">
@@ -287,7 +260,7 @@ function renderItems() {
             <span>${i.date || ''}</span>
           </div>
         </div>
-        <div class="item-action">
+        <div class="card-bottom">
           <span>View Details & Connect</span>
           <strong>→</strong>
         </div>
@@ -308,17 +281,17 @@ async function loadItems() {
 }
 
 // -------------------------------------------------------------
-// 2. SMART MATCHES HUB
+// 2. RENDER LIVE SMART MATCHES
 // -------------------------------------------------------------
 async function loadSmartMatches() {
-  const container = document.querySelector('#matchesContainer');
+  const container = document.querySelector('#matchesHomeGrid');
   if (!container) return;
 
   try {
     const data = await api('/api/matches');
     matches = data.matches || [];
 
-    const badge = document.querySelector('#matchBadge');
+    const badge = document.querySelector('#navMatchBadge');
     if (badge) {
       if (matches.length > 0) {
         badge.textContent = matches.length;
@@ -388,269 +361,15 @@ async function loadSmartMatches() {
 }
 
 document.querySelector('#btnRefreshMatches')?.addEventListener('click', loadSmartMatches);
-
-// Connect from Match pair button
-document.querySelector('#matchesContainer')?.addEventListener('click', (e) => {
+document.querySelector('#matchesHomeGrid')?.addEventListener('click', (e) => {
   const btn = e.target.closest('[data-match-connect-item]');
   if (btn) {
-    const foundId = Number(btn.dataset.matchConnectItem);
-    openConnection(foundId);
+    openConnection(Number(btn.dataset.matchConnectItem));
   }
 });
 
 // -------------------------------------------------------------
-// 3. MY REPORTS DASHBOARD
-// -------------------------------------------------------------
-async function loadMyReports() {
-  const container = document.querySelector('#myReportsContainer');
-  if (!container) return;
-  if (!currentUser) {
-    authDialog.showModal();
-    notify('Please sign in to view your reports.');
-    return;
-  }
-
-  try {
-    const data = await api('/api/user/items');
-    const userItems = data.items || [];
-
-    if (!userItems.length) {
-      container.innerHTML = `
-        <div class="empty">
-          <p style="font-size: 32px; margin-bottom: 8px;">📋</p>
-          <b>You have not posted any reports yet</b>
-          <p style="margin-top: 5px;">Report a lost or found item to track claims and match alerts in real time.</p>
-        </div>
-      `;
-      return;
-    }
-
-    container.innerHTML = userItems
-      .map((it) => {
-        const isResolved = it.status === 'Resolved';
-        const dateStr = it.date || it.item_date || (it.created_at ? new Date(it.created_at).toLocaleDateString() : '');
-        return `
-        <article class="my-report-card">
-          <div class="my-report-info">
-            <b>${escapeHtml(it.name)} (${escapeHtml(it.type)})</b>
-            <small>⌖ ${escapeHtml(it.location)} · ${dateStr} · 💬 ${it.connections_count || 0} claims/matches</small>
-          </div>
-          <div class="my-report-actions">
-            <button class="button button-sm button-secondary" data-my-toggle-id="${it.id}" data-current-status="${it.status}">
-              ${isResolved ? '↺ Reopen' : '✓ Mark Resolved'}
-            </button>
-            <button class="button button-sm button-danger" data-my-delete-id="${it.id}">
-              🗑 Delete
-            </button>
-          </div>
-        </article>
-      `;
-      })
-      .join('');
-  } catch (e) {
-    container.innerHTML = `<p class="empty">${e.message}</p>`;
-  }
-}
-
-// -------------------------------------------------------------
-// 4. INBOX & LIVE MESSENGER
-// -------------------------------------------------------------
-async function loadInbox() {
-  const sidebar = document.querySelector('#inboxConversationsList');
-  const chatPane = document.querySelector('#inboxChatPane');
-  if (!sidebar) return;
-
-  if (!currentUser) {
-    authDialog.showModal();
-    notify('Please sign in to access your messenger inbox.');
-    return;
-  }
-
-  try {
-    const data = await api('/api/connections');
-    connections = data.connections || [];
-
-    const badge = document.querySelector('#msgBadge');
-    if (badge) {
-      const pending = connections.filter((c) => (c.recipient_id === currentUser.id || c.recipient_email === currentUser.email) && c.status === 'Pending').length;
-      if (pending > 0) {
-        badge.textContent = pending;
-        badge.classList.remove('hidden');
-      } else {
-        badge.classList.add('hidden');
-      }
-    }
-
-    if (!connections.length) {
-      sidebar.innerHTML = '<p style="padding:20px; color:var(--muted); font-size:12px;">No active conversations yet.</p>';
-      chatPane.innerHTML = `
-        <div class="empty-chat-state">
-          <p style="font-size: 32px; margin-bottom: 8px;">💬</p>
-          <b>No messages yet</b>
-          <p>Browse items on campus and click "View Details & Connect" to start a conversation.</p>
-        </div>
-      `;
-      return;
-    }
-
-    // Render Conversation List in Sidebar
-    sidebar.innerHTML = connections
-      .map((c) => {
-        const isIncoming = c.recipient_id === currentUser.id || c.recipient_email === currentUser.email;
-        const otherName = isIncoming ? c.sender_name : c.recipient_name;
-        const isActive = activeChatConnectionId === c.id;
-
-        return `
-        <div class="convo-item ${isActive ? 'active' : ''}" data-chat-id="${c.id}">
-          <h4>${escapeHtml(c.item_name)}</h4>
-          <p><b>${escapeHtml(otherName)}:</b> ${escapeHtml(c.message.split('\n')[0])}</p>
-          <div style="display:flex; justify-content:space-between; margin-top:4px;">
-            <span class="pill-badge" style="font-size:8px;">${c.status}</span>
-            <small style="font-size:9px; color:var(--muted);">${new Date(c.created_at).toLocaleDateString()}</small>
-          </div>
-        </div>
-      `;
-      })
-      .join('');
-
-    // If active conversation selected, render it
-    if (activeChatConnectionId) {
-      renderActiveChat(activeChatConnectionId);
-    } else if (connections.length > 0) {
-      activeChatConnectionId = connections[0].id;
-      renderActiveChat(activeChatConnectionId);
-    }
-  } catch (err) {
-    sidebar.innerHTML = `<p style="padding:20px; color:var(--muted); font-size:12px;">${err.message}</p>`;
-  }
-}
-
-function renderActiveChat(connId) {
-  const chatPane = document.querySelector('#inboxChatPane');
-  const c = connections.find((x) => x.id === connId);
-  if (!c || !chatPane) return;
-
-  const isIncoming = c.recipient_id === currentUser.id || c.recipient_email === currentUser.email;
-  const otherName = isIncoming ? c.sender_name : c.recipient_name;
-  const otherRole = isIncoming ? c.sender_role : c.recipient_role;
-  const otherEmail = isIncoming ? c.sender_email : c.recipient_email;
-  const otherPhone = isIncoming ? c.sender_phone : c.recipient_phone;
-  const isAccepted = c.status === 'Accepted' || c.status === 'Matched';
-
-  // Parse conversation message lines
-  const lines = c.message.split('\n\n');
-
-  chatPane.innerHTML = `
-    <div class="chat-pane-header">
-      <div>
-        <h3>${escapeHtml(c.item_name)} (${escapeHtml(c.item_type)})</h3>
-        <small style="color:var(--muted);">Chatting with <b>${escapeHtml(otherName)}</b> (${escapeHtml(otherRole || 'Member')})</small>
-      </div>
-      <div style="display:flex; gap:8px;">
-        ${
-          isIncoming && c.status === 'Pending'
-            ? `<button class="button button-sm button-primary" data-chat-accept-id="${c.id}">✓ Accept & Reveal Contacts</button>`
-            : ''
-        }
-        ${
-          isAccepted
-            ? `
-            <a class="button button-sm button-secondary" href="mailto:${escapeHtml(otherEmail)}?subject=VCTM Foundly: ${encodeURIComponent(c.item_name)}">✉️ Email</a>
-            ${otherPhone ? `<a class="button button-sm button-secondary" href="tel:${escapeHtml(otherPhone)}">📞 Call</a>` : ''}
-          `
-            : ''
-        }
-      </div>
-    </div>
-
-    <div class="chat-messages-scroll" id="chatMessagesScroll">
-      ${lines
-        .map((line) => {
-          if (!line.trim()) return '';
-          const isMe = line.includes(`[${currentUser.name} `);
-          return `<div class="chat-bubble ${isMe ? 'me' : 'them'}">${escapeHtml(line)}</div>`;
-        })
-        .join('')}
-    </div>
-
-    <!-- Suggested Safe Spots Toolbar -->
-    <div style="padding:6px 20px; background:#f5f3ee; border-top:1px solid var(--line); display:flex; gap:6px; overflow-x:auto;">
-      <small style="font-weight:700; color:var(--muted); font-size:10px; align-self:center;">Safe Spots:</small>
-      <button type="button" class="filter-pill btn-quick-spot" data-spot="Let's meet at the Central Library Circulation Counter.">📚 Library Counter</button>
-      <button type="button" class="filter-pill btn-quick-spot" data-spot="Let's meet at the Main Gate Security Desk.">🛡️ Security Desk</button>
-      <button type="button" class="filter-pill btn-quick-spot" data-spot="Let's meet at the Student Centre Cafeteria.">☕ Cafeteria</button>
-    </div>
-
-    <form class="chat-input-bar" id="chatInputForm" data-chat-send-id="${c.id}">
-      <input type="text" placeholder="Type a message or verification answer..." id="chatMsgInput" required autocomplete="off" />
-      <button type="submit" class="button button-primary">Send 💬</button>
-    </form>
-  `;
-
-  // Auto scroll to bottom
-  const scrollBox = document.querySelector('#chatMessagesScroll');
-  if (scrollBox) scrollBox.scrollTop = scrollBox.scrollHeight;
-}
-
-// Conversation select listener
-document.querySelector('#inboxConversationsList')?.addEventListener('click', (e) => {
-  const item = e.target.closest('[data-chat-id]');
-  if (item) {
-    activeChatConnectionId = Number(item.dataset.chatId);
-    document.querySelectorAll('.convo-item').forEach((x) => x.classList.toggle('active', x === item));
-    renderActiveChat(activeChatConnectionId);
-  }
-});
-
-// Chat message send listener
-document.querySelector('#inboxChatPane')?.addEventListener('submit', async (e) => {
-  if (e.target.id !== 'chatInputForm') return;
-  e.preventDefault();
-  const input = document.querySelector('#chatMsgInput');
-  const text = input?.value.trim();
-  if (!text || !activeChatConnectionId) return;
-
-  try {
-    await api(`/api/connections/${activeChatConnectionId}/message`, {
-      method: 'POST',
-      body: JSON.stringify({ message: text }),
-    });
-    input.value = '';
-    await loadInbox();
-  } catch (err) {
-    notify(err.message);
-  }
-});
-
-// Quick spot autofill listener
-document.querySelector('#inboxChatPane')?.addEventListener('click', async (e) => {
-  const spotBtn = e.target.closest('.btn-quick-spot');
-  if (spotBtn) {
-    const input = document.querySelector('#chatMsgInput');
-    if (input) {
-      input.value = spotBtn.dataset.spot;
-      input.focus();
-    }
-    return;
-  }
-
-  const acceptBtn = e.target.closest('[data-chat-accept-id]');
-  if (acceptBtn) {
-    try {
-      await api(`/api/connections/${acceptBtn.dataset.chatAcceptId}/status`, {
-        method: 'POST',
-        body: JSON.stringify({ status: 'Accepted' }),
-      });
-      notify('Connection accepted! Contact information revealed.');
-      await loadInbox();
-    } catch (err) {
-      notify(err.message);
-    }
-  }
-});
-
-// -------------------------------------------------------------
-// ITEM DETAIL MODAL & VERIFICATION
+// 3. ITEM DETAIL MODAL
 // -------------------------------------------------------------
 function openItemDetail(itemId) {
   const item = items.find((x) => x.id === itemId);
@@ -702,7 +421,7 @@ function openItemDetail(itemId) {
   if (isOwner || isAdmin) {
     actionsBox.innerHTML = `
       <button class="button button-secondary button-sm" id="btnToggleStatus">
-        ${isResolved ? '↺ Reopen Listing' : '✓ Mark as Resolved / Handed Over'}
+        ${isResolved ? '↺ Reopen Listing' : '✓ Mark as Resolved'}
       </button>
       <button class="button button-danger button-sm" id="btnDeleteItem">
         🗑 Delete Report
@@ -751,13 +470,252 @@ function openItemDetail(itemId) {
   itemDetailDialog.showModal();
 }
 
+document.querySelector('#closeItemDetail')?.addEventListener('click', () => itemDetailDialog.close());
+
 // -------------------------------------------------------------
-// CONNECTION & CLAIM DIALOG
+// 4. MY REPORTS MODAL
+// -------------------------------------------------------------
+async function openMyReports() {
+  if (!currentUser) {
+    authDialog.showModal();
+    notify('Please sign in to view your reports.');
+    return;
+  }
+  try {
+    const data = await api('/api/user/items');
+    const userItems = data.items || [];
+    const container = document.querySelector('#myReportsList');
+
+    if (!userItems.length) {
+      container.innerHTML = '<p class="empty">You have not published any lost or found reports yet.</p>';
+    } else {
+      container.innerHTML = userItems
+        .map((it) => {
+          const isResolved = it.status === 'Resolved';
+          const itDate = it.date || it.item_date || (it.created_at ? new Date(it.created_at).toLocaleDateString() : '');
+          return `
+          <article class="my-report-card">
+            <div class="my-report-info">
+              <b>${escapeHtml(it.name)} (${escapeHtml(it.type)})</b>
+              <small>⌖ ${escapeHtml(it.location)} · ${escapeHtml(itDate)} · 💬 ${it.connections_count || 0} claims/matches</small>
+            </div>
+            <div class="my-report-actions">
+              <button class="button button-sm button-secondary" data-my-toggle-id="${it.id}" data-current-status="${it.status}">
+                ${isResolved ? '↺ Reopen' : '✓ Resolve'}
+              </button>
+              <button class="button button-sm button-danger" data-my-delete-id="${it.id}">
+                🗑
+              </button>
+            </div>
+          </article>
+        `;
+        })
+        .join('');
+    }
+
+    myReportsDialog.showModal();
+  } catch (e) {
+    notify(e.message);
+  }
+}
+
+document.querySelector('#openMyReports')?.addEventListener('click', openMyReports);
+document.querySelector('#quickMyReports')?.addEventListener('click', openMyReports);
+document.querySelector('#closeMyReports')?.addEventListener('click', () => myReportsDialog.close());
+
+document.querySelector('#myReportsList')?.addEventListener('click', async (e) => {
+  const toggleBtn = e.target.closest('[data-my-toggle-id]');
+  if (toggleBtn) {
+    const itemId = toggleBtn.dataset.myToggleId;
+    const current = toggleBtn.dataset.currentStatus;
+    const nextStatus = current === 'Resolved' ? 'Open' : 'Resolved';
+    try {
+      await api(`/api/items/${itemId}/status`, {
+        method: 'POST',
+        body: JSON.stringify({ status: nextStatus }),
+      });
+      notify(`Report marked as ${nextStatus.toLowerCase()}.`);
+      await loadItems();
+      openMyReports();
+    } catch (err) {
+      notify(err.message);
+    }
+    return;
+  }
+
+  const deleteBtn = e.target.closest('[data-my-delete-id]');
+  if (deleteBtn) {
+    if (confirm('Permanently delete this report?')) {
+      try {
+        await api(`/api/items/${deleteBtn.dataset.myDeleteId}`, { method: 'DELETE' });
+        notify('Report deleted.');
+        await loadItems();
+        openMyReports();
+      } catch (err) {
+        notify(err.message);
+      }
+    }
+  }
+});
+
+// -------------------------------------------------------------
+// 5. MESSAGES & CONNECTIONS MODAL
+// -------------------------------------------------------------
+async function openConnections() {
+  if (!currentUser) {
+    authDialog.showModal();
+    notify('Please sign in to view messages.');
+    return;
+  }
+  try {
+    const data = await api('/api/connections');
+    const list = data.connections || [];
+    connections = list;
+
+    const isMine = (c) => c.recipient_id === currentUser.id || c.recipient_email === currentUser.email;
+
+    const card = (c, incoming) => {
+      const otherName = incoming ? c.sender_name : c.recipient_name;
+      const otherRole = incoming ? c.sender_role : c.recipient_role;
+      const otherEmail = incoming ? c.sender_email : c.recipient_email;
+      const otherPhone = incoming ? c.sender_phone : c.recipient_phone;
+      const isMatched = c.status === 'Matched';
+      const isAccepted = c.status === 'Accepted' || isMatched;
+
+      return `
+        <article class="connection-card">
+          <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+            <div>
+              <h3>${escapeHtml(c.item_name)} (${escapeHtml(c.item_type || 'Report')})</h3>
+              <small>⌖ ${escapeHtml(c.item_location || 'Campus')} · ${new Date(c.created_at).toLocaleDateString()}</small>
+            </div>
+            <span class="pill-badge ${isAccepted ? 'status-open' : ''}">${escapeHtml(c.status)}</span>
+          </div>
+
+          <div style="background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 10px; margin: 10px 0; font-size: 11px; line-height: 1.5;">
+            <b>${incoming ? 'From' : 'To'}: ${escapeHtml(otherName)} (${escapeHtml(otherRole || 'Campus Member')}):</b><br/>
+            ${escapeHtml(c.message).replace(/\n/g, '<br/>')}
+          </div>
+
+          ${
+            incoming && c.status === 'Pending'
+              ? `
+            <div class="connection-actions">
+              <button class="button button-sm button-primary" data-request-id="${c.id}" data-request-action="Accepted">
+                ✓ Accept & Reveal Contact
+              </button>
+              <button class="button button-sm button-secondary" data-request-id="${c.id}" data-request-action="Declined">
+                Decline
+              </button>
+            </div>
+          `
+              : `
+            ${
+              isAccepted
+                ? `
+              <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line);">
+                <small style="font-weight: 700; color: var(--green);">✓ Contact Information Unlocked:</small>
+                <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px;">
+                  <a class="btn-contact-action" href="mailto:${escapeHtml(otherEmail)}?subject=VCTM Foundly: ${encodeURIComponent(c.item_name)}">
+                    ✉️ Email: ${escapeHtml(otherEmail)}
+                  </a>
+                  ${
+                    otherPhone
+                      ? `<a class="btn-contact-action" href="tel:${escapeHtml(otherPhone)}">📞 Call: ${escapeHtml(otherPhone)}</a>`
+                      : ''
+                  }
+                </div>
+                <div class="connection-reply-box">
+                  <input type="text" placeholder="Type a message..." class="reply-msg-input" data-reply-conn-id="${c.id}" />
+                  <button type="button" class="btn-send-reply" data-reply-conn-id="${c.id}">Send 💬</button>
+                </div>
+              </div>
+            `
+                : ''
+            }
+          `
+          }
+        </article>
+      `;
+    };
+
+    const received = list.filter(isMine);
+    const sent = list.filter((c) => !isMine(c));
+    const container = document.querySelector('#connectionsList');
+
+    container.innerHTML =
+      received.length || sent.length
+        ? `
+      ${
+        received.length
+          ? `<p class="eyebrow" style="margin-top: 10px;"><span></span> INCOMING CLAIMS & MATCHES (${received.length})</p>${received.map((c) => card(c, true)).join('')}`
+          : ''
+      }
+      ${
+        sent.length
+          ? `<p class="eyebrow" style="margin-top: 20px;"><span></span> SENT REQUESTS (${sent.length})</p>${sent.map((c) => card(c, false)).join('')}`
+          : ''
+      }
+    `
+        : '<p class="empty">No active messages yet. Browse items and click "View Details & Connect" to send a claim message.</p>';
+
+    connectionsDialog.showModal();
+    checkPendingUpdates();
+  } catch (e) {
+    notify(e.message);
+  }
+}
+
+document.querySelector('#openConnections')?.addEventListener('click', openConnections);
+document.querySelector('#notifications')?.addEventListener('click', () => {
+  if (currentUser) openConnections();
+  else notify('Please sign in to view messages & notifications.');
+});
+document.querySelector('#closeConnections')?.addEventListener('click', () => connectionsDialog.close());
+
+// Action on Connections List
+document.querySelector('#connectionsList')?.addEventListener('click', async (e) => {
+  const actionBtn = e.target.closest('[data-request-action]');
+  if (actionBtn) {
+    try {
+      await api(`/api/connections/${actionBtn.dataset.requestId}/status`, {
+        method: 'POST',
+        body: JSON.stringify({ status: actionBtn.dataset.requestAction }),
+      });
+      notify(`Request ${actionBtn.dataset.requestAction.toLowerCase()}. Contact info revealed!`);
+      openConnections();
+    } catch (err) {
+      notify(err.message);
+    }
+    return;
+  }
+
+  const sendReplyBtn = e.target.closest('.btn-send-reply');
+  if (sendReplyBtn) {
+    const connId = sendReplyBtn.dataset.replyConnId;
+    const input = document.querySelector(`.reply-msg-input[data-reply-conn-id="${connId}"]`);
+    const text = input?.value.trim();
+    if (!text) return;
+    try {
+      await api(`/api/connections/${connId}/message`, {
+        method: 'POST',
+        body: JSON.stringify({ message: text }),
+      });
+      notify('Message sent!');
+      openConnections();
+    } catch (err) {
+      notify(err.message);
+    }
+  }
+});
+
+// -------------------------------------------------------------
+// 6. CONNECT / CLAIM FORM SUBMIT
 // -------------------------------------------------------------
 function openConnection(itemId) {
   if (!currentUser) {
     authDialog.showModal();
-    notify('Please sign in to contact the reporter.');
+    notify('Please sign in to connect with the reporter.');
     return;
   }
   const item = items.find((x) => x.id === itemId);
@@ -789,8 +747,8 @@ if (connectForm) {
       });
       connectDialog.close();
       connectForm.reset();
-      notify('Message sent! You can track replies in the Messages tab.');
-      switchTab('messages');
+      notify('Message sent! View replies in Messages & Notifications.');
+      openConnections();
     } catch (err) {
       notify(err.message);
     }
@@ -798,7 +756,7 @@ if (connectForm) {
 }
 
 // -------------------------------------------------------------
-// USER PROFILE & AUTHENTICATION
+// 7. USER PROFILE & AUTHENTICATION
 // -------------------------------------------------------------
 function openUserProfile() {
   if (!currentUser) {
@@ -828,6 +786,8 @@ function syncUser() {
   const signed = !!currentUser;
   document.querySelector('#openAuth').classList.toggle('hidden', signed);
   document.querySelector('#profileButton').classList.toggle('hidden', !signed);
+  document.querySelector('#openMyReports').classList.toggle('hidden', !signed);
+  document.querySelector('#openConnections').classList.toggle('hidden', !signed);
 
   if (signed) {
     document.querySelector('#profileName').textContent = currentUser.name;
@@ -852,7 +812,6 @@ async function handleSignOut() {
   adminDialog?.close();
   syncUser();
   notify('You have been signed out.');
-  switchTab('feed');
 }
 
 document.querySelector('#profileButton')?.addEventListener('click', openUserProfile);
@@ -862,14 +821,14 @@ document.querySelector('#signOut')?.addEventListener('click', handleSignOut);
 
 document.querySelector('#profileMyReportsBtn')?.addEventListener('click', () => {
   userProfileDialog.close();
-  switchTab('my-reports');
+  openMyReports();
 });
 document.querySelector('#profileConnectionsBtn')?.addEventListener('click', () => {
   userProfileDialog.close();
-  switchTab('messages');
+  openConnections();
 });
 
-// Auth Form Tab Switching
+// Auth Form Tabs
 function setAuthMode(mode) {
   authMode = mode;
   document.querySelectorAll('.auth-tab').forEach((b) => b.classList.toggle('active', b.dataset.authMode === mode));
@@ -918,7 +877,6 @@ if (authForm) {
       syncUser();
       notify(`Welcome, ${currentUser.name}!`);
       if (currentUser.role === 'admin') openAdmin();
-      else switchTab('feed');
     } catch (err) {
       errElem.textContent = err.message;
       if (err.message.includes('Create account')) {
@@ -928,7 +886,7 @@ if (authForm) {
   });
 }
 
-// Password Reset Dialog
+// Password Reset
 document.querySelector('#openForgotPass')?.addEventListener('click', () => {
   authDialog.close();
   resetPasswordDialog.showModal();
@@ -959,7 +917,7 @@ if (resetPasswordForm) {
 }
 
 // -------------------------------------------------------------
-// REPORT AN ITEM
+// 8. REPORT ITEM FORM
 // -------------------------------------------------------------
 function setType(type) {
   reportType = type;
@@ -986,7 +944,6 @@ function openReport(type) {
 document.querySelectorAll('[data-open-report]').forEach((b) =>
   b.addEventListener('click', () => openReport(b.dataset.openReport))
 );
-document.querySelector('#btnQuickReport')?.addEventListener('click', () => openReport('Lost'));
 document.querySelectorAll('.type-choice').forEach((b) =>
   b.addEventListener('click', () => setType(b.dataset.type))
 );
@@ -1023,12 +980,12 @@ if (reportForm) {
 }
 
 // -------------------------------------------------------------
-// SEARCH, FILTERS & GRID CLICKS
+// 9. FILTERS & SEARCH
 // -------------------------------------------------------------
-document.querySelectorAll('.filter-pill[data-filter]').forEach((b) =>
+document.querySelectorAll('.type-pill[data-filter]').forEach((b) =>
   b.addEventListener('click', () => {
     currentFilter = b.dataset.filter;
-    document.querySelectorAll('.filter-pill[data-filter]').forEach((x) => x.classList.toggle('active', x === b));
+    document.querySelectorAll('.type-pill[data-filter]').forEach((x) => x.classList.toggle('active', x === b));
     renderItems();
   })
 );
@@ -1060,45 +1017,9 @@ if (grid) {
   });
 }
 
-document.querySelector('#closeItemDetail')?.addEventListener('click', () => itemDetailDialog.close());
-
-// Action on My Reports List (Toggle Status / Delete)
-document.querySelector('#myReportsContainer')?.addEventListener('click', async (e) => {
-  const toggleBtn = e.target.closest('[data-my-toggle-id]');
-  if (toggleBtn) {
-    const itemId = toggleBtn.dataset.myToggleId;
-    const current = toggleBtn.dataset.currentStatus;
-    const nextStatus = current === 'Resolved' ? 'Open' : 'Resolved';
-    try {
-      await api(`/api/items/${itemId}/status`, {
-        method: 'POST',
-        body: JSON.stringify({ status: nextStatus }),
-      });
-      notify(`Report marked as ${nextStatus.toLowerCase()}.`);
-      await loadItems();
-      loadMyReports();
-    } catch (err) {
-      notify(err.message);
-    }
-    return;
-  }
-
-  const deleteBtn = e.target.closest('[data-my-delete-id]');
-  if (deleteBtn) {
-    if (confirm('Permanently delete this report?')) {
-      try {
-        await api(`/api/items/${deleteBtn.dataset.myDeleteId}`, { method: 'DELETE' });
-        notify('Report deleted.');
-        await loadItems();
-        loadMyReports();
-      } catch (err) {
-        notify(err.message);
-      }
-    }
-  }
-});
-
-// Admin Console
+// -------------------------------------------------------------
+// 10. ADMIN CONSOLE
+// -------------------------------------------------------------
 async function openAdmin() {
   try {
     const data = await api('/api/admin/overview');
@@ -1165,6 +1086,22 @@ document.querySelector('#adminReports')?.addEventListener('click', async (e) => 
   }
 });
 
+// Notifications check badge
+async function checkPendingUpdates() {
+  if (!currentUser) return;
+  try {
+    const s = await api('/api/session');
+    const dot = document.querySelector('#notifDot');
+    const badge = document.querySelector('#navConnBadge');
+    const count = s.pending_count || 0;
+    if (dot) dot.classList.toggle('hidden', count === 0);
+    if (badge) {
+      badge.textContent = count;
+      badge.classList.toggle('hidden', count === 0);
+    }
+  } catch (_) {}
+}
+
 // Click-outside backdrop handler
 document.querySelectorAll('dialog').forEach((dlg) => {
   dlg.addEventListener('click', (e) => {
@@ -1183,17 +1120,16 @@ document.querySelectorAll('dialog').forEach((dlg) => {
       localStorage.removeItem('foundly_token');
     }
     syncUser();
+    checkPendingUpdates();
     await loadItems();
     loadSmartMatches();
 
-    // Refresh every 10s
     setInterval(async () => {
       await loadItems();
-      const s = await api('/api/session');
-      if (s.user) currentUser = s.user;
-      syncUser();
+      checkPendingUpdates();
+      loadSmartMatches();
     }, 10000);
   } catch (e) {
-    console.error('Init notice:', e);
+    console.error('Init error:', e);
   }
 })();
