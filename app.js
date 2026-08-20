@@ -905,48 +905,6 @@ function openUserProfile() {
   userProfileDialog.showModal();
 }
 
-function syncUser() {
-  const signed = !!currentUser;
-  
-  // Top Navbar Navigation Toggles
-  document.querySelector('#openAuth')?.classList.toggle('hidden', signed);
-  document.querySelector('#profileButton')?.classList.toggle('hidden', !signed);
-  document.querySelector('#openMyReports')?.classList.toggle('hidden', !signed);
-  document.querySelector('#openConnections')?.classList.toggle('hidden', !signed);
-
-  // Hero Section Transformation (Guest Hero vs Logged-In User Dashboard Hero)
-  const guestHero = document.querySelector('#discover');
-  const userHero = document.querySelector('#userHero');
-
-  if (signed) {
-    guestHero?.classList.add('hidden');
-    userHero?.classList.remove('hidden');
-
-    const initials = (currentUser.name || 'User')
-      .split(' ')
-      .map((x) => x[0])
-      .join('')
-      .slice(0, 2)
-      .toUpperCase();
-
-    // Top Navigation Avatar Pill
-    const profileNameEl = document.querySelector('#profileName');
-    const profileRoleEl = document.querySelector('#profileRole');
-    const avatarInitialsEl = document.querySelector('#avatarInitials');
-    if (profileNameEl) profileNameEl.textContent = currentUser.name;
-    if (profileRoleEl) profileRoleEl.textContent = currentUser.role === 'admin' ? 'Administrator' : (currentUser.campus_role || 'Student');
-    if (avatarInitialsEl) avatarInitialsEl.textContent = initials;
-
-    // User Dashboard Hero Info
-    const heroInitialsEl = document.querySelector('#heroUserInitials');
-    const heroNameEl = document.querySelector('#heroUserName');
-    const heroRoleEl = document.querySelector('#heroUserRole');
-    const heroEmailEl = document.querySelector('#heroUserEmail');
-    if (heroInitialsEl) heroInitialsEl.textContent = initials;
-    if (heroNameEl) heroNameEl.textContent = currentUser.name;
-    if (heroRoleEl) heroRoleEl.textContent = currentUser.role === 'admin' ? 'Administrator' : (currentUser.campus_role || 'Student');
-    if (heroEmailEl) heroEmailEl.textContent = currentUser.email;
-
 function syncUserMetrics() {
   if (!currentUser) return;
   const myReportsCount = items.filter((i) => isItemOwner(i)).length;
