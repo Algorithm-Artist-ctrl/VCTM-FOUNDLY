@@ -526,31 +526,29 @@ def find_and_notify_matches(new_item: Item, db: Session):
 
     for cand in candidates:
         cand_text = f"{cand.name} {cand.location} {cand.description or ''}".lower()
-        is_match = (
-            (cand.category == new_item.category and cand.category != "Other")
-            or any(kw in cand_text for kw in keywords)
-        )
-        if is_match:
+        cat_match = cand.category == new_item.category and cand.category != "Other"
+        kw_match = any(kw in cand_text for kw in keywords) if keywords else False
+
+        if cat_match or kw_match:
+            lost_user_id = new_item.owner_id if new_item.type == "Lost" else cand.owner_id
+            finder_user_id = new_item.owner_id if new_item.type == "Found" else cand.owner_id
+            found_item = new_item if new_item.type == "Found" else cand
+            lost_item = new_item if new_item.type == "Lost" else cand
+
             existing = (
                 db.query(Connection)
                 .filter(
-                    Connection.item_id.in_([new_item.id, cand.id]),
-                    Connection.sender_id.in_([new_item.owner_id, cand.owner_id]),
-                    Connection.recipient_id.in_([new_item.owner_id, cand.owner_id]),
+                    Connection.recipient_id == lost_user_id,
+                    Connection.item_id == found_item.id,
                 )
                 .first()
             )
             if not existing:
-                # Notify the person who reported the Lost item
-                lost_owner_id = new_item.owner_id if new_item.type == "Lost" else cand.owner_id
-                finder_owner_id = new_item.owner_id if new_item.type == "Found" else cand.owner_id
-                finder_item = new_item if new_item.type == "Found" else cand
-
                 match_conn = Connection(
-                    item_id=finder_item.id,
-                    sender_id=finder_owner_id,
-                    recipient_id=lost_owner_id,
-                    message=f"✦ Automatic Campus Match: Someone reported finding '{finder_item.name}' at '{finder_item.location}'. Connect directly to verify ownership and arrange safe pickup!",
+                    item_id=found_item.id,
+                    sender_id=finder_user_id,
+                    recipient_id=lost_user_id,
+                    message=f"✦ Campus Match Alert: Someone reported finding '{found_item.name}' at '{found_item.location}' matching your lost '{lost_item.name}'. Click to contact and reclaim!",
                     status="Matched",
                 )
                 db.add(match_conn)
