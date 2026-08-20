@@ -1134,6 +1134,26 @@ footer p { margin: 0; }
 .hidden { display: none !important; }
 .empty { grid-column: 1 / -1; text-align: center; padding: 50px 20px; background: #fff; border: 1px solid var(--line); border-radius: 12px; color: var(--muted); }
 
+/* Strict Authentication State Visibility Rules */
+body:not(.is-authenticated) #matches,
+body:not(.is-authenticated) #items,
+body:not(.is-authenticated) #userHero,
+body:not(.is-authenticated) .member-nav,
+body:not(.is-authenticated) #openMyReports,
+body:not(.is-authenticated) #openConnections,
+body:not(.is-authenticated) #profileButton {
+  display: none !important;
+}
+
+body.is-authenticated #discover,
+body.is-authenticated #safe-zones,
+body.is-authenticated #how-it-works,
+body.is-authenticated .quick-actions,
+body.is-authenticated .guest-nav,
+body.is-authenticated #openAuth {
+  display: none !important;
+}
+
 /* Responsive Mobile */
 @media (max-width: 860px) {
   .hero { grid-template-columns: 1fr; }

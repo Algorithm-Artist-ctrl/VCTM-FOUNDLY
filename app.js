@@ -1034,6 +1034,7 @@ function syncUserMetrics() {
 
 function syncUser() {
   const signed = !!currentUser;
+  document.body.classList.toggle('is-authenticated', signed);
   
   // Top Navbar Navigation Toggles
   document.querySelector('#openAuth')?.classList.toggle('hidden', signed);
