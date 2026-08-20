@@ -354,8 +354,23 @@ async function loadItems() {
     const data = await api('/api/items');
     items = data.items || [];
     renderItems();
+    syncUserMetrics();
   } catch (err) {
     console.error('Failed to load items:', err);
+  }
+}
+
+async function loadConnections() {
+  if (!currentUser) {
+    connections = [];
+    return;
+  }
+  try {
+    const data = await api('/api/connections');
+    connections = data.connections || [];
+    syncUserMetrics();
+  } catch (err) {
+    console.error('Failed to load connections:', err);
   }
 }
 
@@ -369,6 +384,7 @@ async function loadSmartMatches() {
   try {
     const data = await api('/api/matches');
     matches = data.matches || [];
+    syncUserMetrics();
 
     const badge = document.querySelector('#navMatchBadge');
     if (badge) {
@@ -926,93 +942,140 @@ function syncUser() {
     if (heroRoleEl) heroRoleEl.textContent = currentUser.role === 'admin' ? 'Administrator' : (currentUser.campus_role || 'Student');
     if (heroEmailEl) heroEmailEl.textContent = currentUser.email;
 
-    // Real-Time Dashboard Metrics
-    const myReportsCount = items.filter((i) => isItemOwner(i)).length;
-    const myMatchesCount = matches.filter((m) => 
-      isItemOwner(m.lost_item) || isItemOwner(m.found_item)
-    ).length;
+function syncUserMetrics() {
+  if (!currentUser) return;
+  const myReportsCount = items.filter((i) => isItemOwner(i)).length;
+  const myMatchesCount = matches.filter((m) => 
+    isItemOwner(m.lost_item) || isItemOwner(m.found_item)
+  ).length;
+  const myMessagesCount = connections.length;
 
-    const metricReportsEl = document.querySelector('#metricMyReportsCount');
-    const metricMatchesEl = document.querySelector('#metricMyMatchesCount');
-    const metricMessagesEl = document.querySelector('#metricMyMessagesCount');
-    if (metricReportsEl) metricReportsEl.textContent = myReportsCount;
-    if (metricMatchesEl) metricMatchesEl.textContent = myMatchesCount;
-    if (metricMessagesEl) metricMessagesEl.textContent = connections.length;
+  const metricReportsEl = document.querySelector('#metricMyReportsCount');
+  const metricMatchesEl = document.querySelector('#metricMyMatchesCount');
+  const metricMessagesEl = document.querySelector('#metricMyMessagesCount');
+  if (metricReportsEl) metricReportsEl.textContent = myReportsCount;
+  if (metricMatchesEl) metricMatchesEl.textContent = myMatchesCount;
+  if (metricMessagesEl) metricMessagesEl.textContent = myMessagesCount;
 
-    // Show My Posts filter pill in repository
-    const myPostsPill = document.querySelector('#myPostsFilterPill');
-    const filterMyPostsCount = document.querySelector('#filterMyPostsCount');
-    if (myPostsPill) myPostsPill.classList.remove('hidden');
-    if (filterMyPostsCount) filterMyPostsCount.textContent = myReportsCount;
+  // Show My Posts filter pill in repository
+  const myPostsPill = document.querySelector('#myPostsFilterPill');
+  const filterMyPostsCount = document.querySelector('#filterMyPostsCount');
+  if (myPostsPill) myPostsPill.classList.remove('hidden');
+  if (filterMyPostsCount) filterMyPostsCount.textContent = myReportsCount;
 
-    // Render Personal Items directly inside Dashboard
-    const userGrid = document.querySelector('#userDashboardItemsGrid');
-    if (userGrid) {
-      const myItems = items.filter((i) => isItemOwner(i));
-      if (!myItems.length) {
-        userGrid.innerHTML = `
-          <div class="user-empty-dashboard">
-            <span style="font-size: 36px; display: block; margin-bottom: 8px;">📋</span>
-            <b>No items reported by you yet</b>
-            <p>Report any lost or found item to automatically track matches, alert the campus, and receive claim requests.</p>
-            <div style="display: flex; justify-content: center; gap: 10px;">
-              <button class="button button-primary button-sm" data-open-report="Lost">＋ Report Lost Item</button>
-              <button class="button button-secondary button-sm" data-open-report="Found">＋ Report Found Item</button>
-            </div>
+  // Render Personal Items directly inside Dashboard
+  const userGrid = document.querySelector('#userDashboardItemsGrid');
+  if (userGrid) {
+    const myItems = items.filter((i) => isItemOwner(i));
+    if (!myItems.length) {
+      userGrid.innerHTML = `
+        <div class="user-empty-dashboard">
+          <span style="font-size: 36px; display: block; margin-bottom: 8px;">📋</span>
+          <b>No items reported by you yet</b>
+          <p>Report any lost or found item to automatically track matches, alert the campus, and receive claim requests.</p>
+          <div style="display: flex; justify-content: center; gap: 10px;">
+            <button class="button button-primary button-sm" data-open-report="Lost">＋ Report Lost Item</button>
+            <button class="button button-secondary button-sm" data-open-report="Found">＋ Report Found Item</button>
           </div>
+        </div>
+      `;
+      userGrid.querySelectorAll('[data-open-report]').forEach((b) =>
+        b.addEventListener('click', () => openReport(b.dataset.openReport))
+      );
+    } else {
+      userGrid.innerHTML = myItems
+        .map((i) => {
+          const isResolved = i.status === 'Resolved';
+          const hasImage = !!i.image_data;
+          const icon = getItemIcon(i.name, i.category, i.description);
+          const mediaHtml = hasImage
+            ? `<img src="${i.image_data}" alt="${escapeHtml(i.name)}" loading="lazy" />`
+            : `<span class="item-icon-display">${icon}</span>`;
+
+          const badgeClass = isResolved
+            ? 'badge-resolved'
+            : i.type === 'Found'
+            ? 'badge-found'
+            : 'badge-lost';
+
+          const badgeText = isResolved
+            ? '✓ RESOLVED'
+            : i.type === 'Found'
+            ? '🟢 FOUND'
+            : '🔴 LOST';
+
+          return `
+          <article class="item-card ${isResolved ? 'is-resolved' : ''} is-my-post" data-item-id="${i.id}">
+            <div class="card-media">
+              ${mediaHtml}
+              <span class="card-owner-badge">⭐ YOUR POST</span>
+              <span class="card-status-badge ${badgeClass}">
+                ${badgeText}
+              </span>
+            </div>
+            <div class="card-body">
+              <p class="category">${escapeHtml(i.category.toUpperCase())}</p>
+              <h3>${escapeHtml(i.name)}</h3>
+              <div class="card-meta">
+                <span>⌖ ${escapeHtml(i.location)}</span>
+                <span>${i.date || ''}</span>
+              </div>
+            </div>
+            <div class="card-bottom action-owner">
+              <span>⚙ Manage Your Post</span>
+              <strong>→</strong>
+            </div>
+          </article>
         `;
-        userGrid.querySelectorAll('[data-open-report]').forEach((b) =>
-          b.addEventListener('click', () => openReport(b.dataset.openReport))
-        );
-      } else {
-        userGrid.innerHTML = myItems
-          .map((i) => {
-            const isResolved = i.status === 'Resolved';
-            const hasImage = !!i.image_data;
-            const icon = getItemIcon(i.name, i.category, i.description);
-            const mediaHtml = hasImage
-              ? `<img src="${i.image_data}" alt="${escapeHtml(i.name)}" loading="lazy" />`
-              : `<span class="item-icon-display">${icon}</span>`;
-
-            const badgeClass = isResolved
-              ? 'badge-resolved'
-              : i.type === 'Found'
-              ? 'badge-found'
-              : 'badge-lost';
-
-            const badgeText = isResolved
-              ? '✓ RESOLVED'
-              : i.type === 'Found'
-              ? '🟢 FOUND'
-              : '🔴 LOST';
-
-            return `
-            <article class="item-card ${isResolved ? 'is-resolved' : ''} is-my-post" data-item-id="${i.id}">
-              <div class="card-media">
-                ${mediaHtml}
-                <span class="card-owner-badge">⭐ YOUR POST</span>
-                <span class="card-status-badge ${badgeClass}">
-                  ${badgeText}
-                </span>
-              </div>
-              <div class="card-body">
-                <p class="category">${escapeHtml(i.category.toUpperCase())}</p>
-                <h3>${escapeHtml(i.name)}</h3>
-                <div class="card-meta">
-                  <span>⌖ ${escapeHtml(i.location)}</span>
-                  <span>${i.date || ''}</span>
-                </div>
-              </div>
-              <div class="card-bottom action-owner">
-                <span>⚙ Manage Your Post</span>
-                <strong>→</strong>
-              </div>
-            </article>
-          `;
-          })
-          .join('');
-      }
+        })
+        .join('');
     }
+  }
+}
+
+function syncUser() {
+  const signed = !!currentUser;
+  
+  // Top Navbar Navigation Toggles
+  document.querySelector('#openAuth')?.classList.toggle('hidden', signed);
+  document.querySelector('#profileButton')?.classList.toggle('hidden', !signed);
+  document.querySelector('#openMyReports')?.classList.toggle('hidden', !signed);
+  document.querySelector('#openConnections')?.classList.toggle('hidden', !signed);
+
+  // Hero Section Transformation (Guest Hero vs Logged-In User Dashboard Hero)
+  const guestHero = document.querySelector('#discover');
+  const userHero = document.querySelector('#userHero');
+
+  if (signed) {
+    guestHero?.classList.add('hidden');
+    userHero?.classList.remove('hidden');
+
+    const initials = (currentUser.name || 'User')
+      .split(' ')
+      .map((x) => x[0])
+      .join('')
+      .slice(0, 2)
+      .toUpperCase();
+
+    // Top Navigation Avatar Pill
+    const profileNameEl = document.querySelector('#profileName');
+    const profileRoleEl = document.querySelector('#profileRole');
+    const avatarInitialsEl = document.querySelector('#avatarInitials');
+    if (profileNameEl) profileNameEl.textContent = currentUser.name;
+    if (profileRoleEl) profileRoleEl.textContent = currentUser.role === 'admin' ? 'Administrator' : (currentUser.campus_role || 'Student');
+    if (avatarInitialsEl) avatarInitialsEl.textContent = initials;
+
+    // User Dashboard Hero Info
+    const heroInitialsEl = document.querySelector('#heroUserInitials');
+    const heroNameEl = document.querySelector('#heroUserName');
+    const heroRoleEl = document.querySelector('#heroUserRole');
+    const heroEmailEl = document.querySelector('#heroUserEmail');
+    if (heroInitialsEl) heroInitialsEl.textContent = initials;
+    if (heroNameEl) heroNameEl.textContent = currentUser.name;
+    if (heroRoleEl) heroRoleEl.textContent = currentUser.role === 'admin' ? 'Administrator' : (currentUser.campus_role || 'Student');
+    if (heroEmailEl) heroEmailEl.textContent = currentUser.email;
+
+    syncUserMetrics();
   } else {
     guestHero?.classList.remove('hidden');
     userHero?.classList.add('hidden');
@@ -1376,15 +1439,23 @@ document.querySelectorAll('dialog').forEach((dlg) => {
       localStorage.removeItem('foundly_token');
     }
     syncUser();
+
+    // Fetch items, smart matches, and connections in parallel
+    await Promise.all([
+      loadItems(),
+      loadSmartMatches(),
+      loadConnections()
+    ]);
     checkPendingUpdates();
-    await loadItems();
-    loadSmartMatches();
 
     setInterval(async () => {
-      await loadItems();
+      await Promise.all([
+        loadItems(),
+        loadSmartMatches(),
+        loadConnections()
+      ]);
       checkPendingUpdates();
-      loadSmartMatches();
-    }, 10000);
+    }, 8000);
   } catch (e) {
     console.error('Init error:', e);
   }
