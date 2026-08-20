@@ -1,2 +1,7 @@
-# VCTM Foundly runs on Python 3 standard library (sqlite3, http.server, etc.)
-# No external pip dependencies are required.
+fastapi>=0.110.0
+uvicorn[standard]>=0.28.0
+gunicorn>=21.2.0
+sqlalchemy>=2.0.28
+pydantic>=2.6.0
+psycopg2-binary>=2.9.9
+python-multipart>=0.0.9

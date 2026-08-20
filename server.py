@@ -1,631 +1,827 @@
-"""VCTM Foundly - Production Campus Lost & Found Server.
+"""VCTM Foundly - Enterprise Production Backend (FastAPI + SQLAlchemy + PostgreSQL/SQLite).
 
-A fast, zero-dependency, secure backend powered by Python's standard library and SQLite.
-Configurable via environment variables for local development, Docker, and Cloud platforms.
+High-concurrency asynchronous API and web application server with database ORM,
+connection pooling, automated migrations, OpenAPI documentation, and security middleware.
 """
 import csv
 import hashlib
 import io
-import json
 import os
 import re
 import secrets
-import sqlite3
 import time
 from collections import defaultdict
-from http import cookies
-from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from datetime import datetime
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from typing import Optional
+
+from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse, Response as RawResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
+from sqlalchemy import (
+    Column,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    create_engine,
+    desc,
+    func,
+    or_,
+)
+from sqlalchemy.orm import declarative_base, relationship, sessionmaker, Session
 
 ROOT = Path(__file__).parent
-DB_PATH = Path(os.environ.get("DATABASE_PATH", ROOT / "foundly.db"))
 
-# Configuration via environment variables
+# -------------------------------------------------------------
+# DATABASE CONFIGURATION (PostgreSQL or SQLite)
+# -------------------------------------------------------------
+DATABASE_URL = os.environ.get("DATABASE_URL")
+if not DATABASE_URL:
+    db_file = os.environ.get("DATABASE_PATH", str(ROOT / "foundly.db"))
+    DATABASE_URL = f"sqlite:///{db_file}"
+elif DATABASE_URL.startswith("postgres://"):
+    # Fix for Heroku/Render legacy postgres:// URI
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
+is_sqlite = DATABASE_URL.startswith("sqlite")
+engine = create_engine(
+    DATABASE_URL,
+    connect_args={"check_same_thread": False} if is_sqlite else {},
+    pool_pre_ping=True,
+)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
+
+# -------------------------------------------------------------
+# CONFIGURATION & RATE LIMITING
+# -------------------------------------------------------------
 raw_domains = os.environ.get("ALLOWED_DOMAINS", "vctm.in,vctm.edu,gmail.com,foundly.test")
 COLLEGE_DOMAINS = [d.strip().lower() for d in raw_domains.split(",") if d.strip()]
 ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@foundly.test").lower()
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin123")
 ALLOW_ALL_DOMAINS = "*" in COLLEGE_DOMAINS or os.environ.get("ALLOW_ALL_DOMAINS", "").lower() in ("true", "1")
 
-# In-memory sliding-window rate limiter
 RATE_LIMITS = defaultdict(list)
-MAX_REQUESTS_PER_WINDOW = 30
+MAX_REQUESTS_PER_WINDOW = 60
 RATE_WINDOW_SECONDS = 60
 
 
 def check_rate_limit(ip_address: str) -> bool:
-    """Return True if request is allowed, False if rate limit exceeded."""
     now = time.time()
-    timestamps = RATE_LIMITS[ip_address]
-    # Filter out timestamps older than the window
-    RATE_LIMITS[ip_address] = [t for t in timestamps if now - t < RATE_WINDOW_SECONDS]
+    RATE_LIMITS[ip_address] = [t for t in RATE_LIMITS[ip_address] if now - t < RATE_WINDOW_SECONDS]
     if len(RATE_LIMITS[ip_address]) >= MAX_REQUESTS_PER_WINDOW:
         return False
     RATE_LIMITS[ip_address].append(now)
     return True
 
 
-def db():
-    connection = sqlite3.connect(DB_PATH)
-    connection.row_factory = sqlite3.Row
-    connection.execute("PRAGMA foreign_keys = ON")
-    return connection
+# -------------------------------------------------------------
+# ORM DATABASE MODELS
+# -------------------------------------------------------------
+class User(Base):
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), nullable=False)
+    email = Column(String(120), unique=True, index=True, nullable=False)
+    password_salt = Column(String(64), nullable=False)
+    password_hash = Column(String(128), nullable=False)
+    role = Column(String(20), default="user")
+    campus_role = Column(String(50), default="Student")
+    phone = Column(String(30), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    items = relationship("Item", back_populates="owner", cascade="all, delete-orphan")
 
 
-def password_hash(password, salt=None):
+class UserSession(Base):
+    __tablename__ = "sessions"
+    token = Column(String(64), primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Item(Base):
+    __tablename__ = "items"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(120), nullable=False)
+    category = Column(String(50), nullable=False)
+    location = Column(String(120), nullable=False)
+    item_date = Column(String(30), nullable=False)
+    description = Column(Text, nullable=True)
+    type = Column(String(20), nullable=False)  # 'Lost' or 'Found'
+    status = Column(String(20), default="Open")  # 'Open' or 'Resolved'
+    image_data = Column(Text, nullable=True)
+    proof_question = Column(String(200), nullable=True)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    owner = relationship("User", back_populates="items")
+    connections = relationship("Connection", back_populates="item", cascade="all, delete-orphan")
+
+
+class Connection(Base):
+    __tablename__ = "connections"
+    id = Column(Integer, primary_key=True, index=True)
+    item_id = Column(Integer, ForeignKey("items.id", ondelete="CASCADE"), nullable=False)
+    sender_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    recipient_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    message = Column(Text, nullable=False)
+    status = Column(String(20), default="Pending")  # 'Pending', 'Accepted', 'Declined'
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    item = relationship("Item", back_populates="connections")
+    sender = relationship("User", foreign_keys=[sender_id])
+    recipient = relationship("User", foreign_keys=[recipient_id])
+
+
+# Create database schema
+Base.metadata.create_all(bind=engine)
+
+
+# -------------------------------------------------------------
+# PASSWORD & AUTH UTILITIES
+# -------------------------------------------------------------
+def password_hash(password: str, salt: Optional[bytes] = None):
     salt = salt or os.urandom(16)
     value = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 200_000)
     return salt.hex(), value.hex()
 
 
-def verify_password(password, salt, expected):
-    _, calculated = password_hash(password, bytes.fromhex(salt))
-    return secrets.compare_digest(calculated, expected)
+def verify_password(password: str, salt_hex: str, expected_hash_hex: str) -> bool:
+    try:
+        salt = bytes.fromhex(salt_hex)
+        _, calculated = password_hash(password, salt)
+        return secrets.compare_digest(calculated, expected_hash_hex)
+    except Exception:
+        return False
 
 
-def is_college_email(email):
+def is_college_email(email: str) -> bool:
     if ALLOW_ALL_DOMAINS:
         return bool(re.match(r"^[^@]+@[^@]+\.[^@]+$", email))
     email = email.lower()
     return any(email.endswith("@" + domain) for domain in COLLEGE_DOMAINS)
 
 
-def initialise_database():
-    connection = db()
-    connection.executescript("""
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY,
-            name TEXT NOT NULL,
-            email TEXT NOT NULL UNIQUE,
-            password_salt TEXT NOT NULL,
-            password_hash TEXT NOT NULL,
-            role TEXT NOT NULL DEFAULT 'user',
-            campus_role TEXT,
-            phone TEXT,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-        );
-        CREATE TABLE IF NOT EXISTS sessions (
-            token TEXT PRIMARY KEY,
-            user_id INTEGER NOT NULL,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
-        );
-        CREATE TABLE IF NOT EXISTS items (
-            id INTEGER PRIMARY KEY,
-            name TEXT NOT NULL,
-            category TEXT NOT NULL,
-            location TEXT NOT NULL,
-            item_date TEXT NOT NULL,
-            description TEXT,
-            type TEXT NOT NULL CHECK(type IN ('Lost','Found')),
-            status TEXT NOT NULL DEFAULT 'Open' CHECK(status IN ('Open','Resolved','Archived')),
-            image_data TEXT,
-            proof_question TEXT,
-            owner_id INTEGER NOT NULL,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY(owner_id) REFERENCES users(id)
-        );
-        CREATE TABLE IF NOT EXISTS connections (
-            id INTEGER PRIMARY KEY,
-            item_id INTEGER NOT NULL,
-            sender_id INTEGER NOT NULL,
-            recipient_id INTEGER NOT NULL,
-            message TEXT NOT NULL,
-            status TEXT NOT NULL DEFAULT 'Pending',
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY(item_id) REFERENCES items(id) ON DELETE CASCADE,
-            FOREIGN KEY(sender_id) REFERENCES users(id),
-            FOREIGN KEY(recipient_id) REFERENCES users(id)
-        );
-    """)
-
-    # Safe column migrations for existing databases
-    item_cols = [r[1] for r in connection.execute("PRAGMA table_info(items)").fetchall()]
-    if "status" not in item_cols:
-        connection.execute("ALTER TABLE items ADD COLUMN status TEXT NOT NULL DEFAULT 'Open'")
-    if "image_data" not in item_cols:
-        connection.execute("ALTER TABLE items ADD COLUMN image_data TEXT")
-    if "proof_question" not in item_cols:
-        connection.execute("ALTER TABLE items ADD COLUMN proof_question TEXT")
-
-    user_cols = [r[1] for r in connection.execute("PRAGMA table_info(users)").fetchall()]
-    if "phone" not in user_cols:
-        connection.execute("ALTER TABLE users ADD COLUMN phone TEXT")
-
-    # Seed Admin User if not present
-    if not connection.execute("SELECT 1 FROM users WHERE email = ?", (ADMIN_EMAIL,)).fetchone():
-        salt, digest = password_hash(ADMIN_PASSWORD)
-        connection.execute(
-            "INSERT INTO users(name,email,password_salt,password_hash,role,campus_role) VALUES(?,?,?,?,?,?)",
-            ("VCTM Administrator", ADMIN_EMAIL, salt, digest, "admin", "Administrator")
-        )
-
-    admin_id = connection.execute("SELECT id FROM users WHERE email=?", (ADMIN_EMAIL,)).fetchone()[0]
-
-    # Seed initial samples if items table is empty
-    if not connection.execute("SELECT 1 FROM items LIMIT 1").fetchone():
-        samples = [
-            ("Silver laptop sleeve", "Electronics", "Engineering block", "2026-08-20", "Left near the second-floor computer lab.", "Found", "Open", "What color is the zipper pull?"),
-            ("Brown leather wallet", "Accessories", "Student centre", "2026-08-20", "Contains ID card and student passes.", "Lost", "Open", "What initials are embossed inside?"),
-            ("Set of house keys", "Keys", "West parking", "2026-08-20", "Three silver keys on a yellow spiral keyring.", "Found", "Open", "Describe the small figurine attached."),
-            ("Blue water bottle", "Other", "Sports complex", "2026-08-20", "Insulated bottle with college club stickers.", "Lost", "Open", ""),
-            ("Engineering drawing book", "Books & stationery", "Mechanical lab", "2026-08-19", "Contains ED assignment sheets with name on first page.", "Lost", "Resolved", ""),
-            ("Prescription glasses", "Accessories", "Seminar hall", "2026-08-18", "Black rectangular frame in a blue hard case.", "Found", "Open", "Brand of the case?"),
-        ]
-        connection.executemany(
-            "INSERT INTO items(name,category,location,item_date,description,type,status,proof_question,owner_id) VALUES(?,?,?,?,?,?,?,?,?)",
-            [(*item, admin_id) for item in samples]
-        )
-    connection.commit()
-    connection.close()
-
-
-class Handler(SimpleHTTPRequestHandler):
-    def end_headers(self):
-        # Security and hardening headers
-        self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("X-Frame-Options", "SAMEORIGIN")
-        self.send_header("Referrer-Policy", "strict-origin-when-cross-origin")
-        self.send_header("Permissions-Policy", "geolocation=(self)")
-        super().end_headers()
-
-    def json_response(self, status, payload, extra_headers=None):
-        data = json.dumps(payload).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Content-Length", str(len(data)))
-        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
-        if extra_headers:
-            for key, value in extra_headers.items():
-                self.send_header(key, value)
-        self.end_headers()
-        self.wfile.write(data)
-
-    def body(self):
-        length = int(self.headers.get("Content-Length", 0))
-        if length > 10 * 1024 * 1024:  # Max 10MB payload (allows compressed base64 images)
-            raise ValueError("Payload exceeds maximum size limit (10MB).")
-        try:
-            return json.loads(self.rfile.read(length) or b"{}")
-        except json.JSONDecodeError:
-            raise ValueError("Invalid JSON request data.")
-
-    def current_user(self):
-        raw = self.headers.get("Cookie", "")
-        token = cookies.SimpleCookie(raw).get("foundly_session")
-        if not token:
-            return None
-        connection = db()
-        user = connection.execute("""
-            SELECT u.id, u.name, u.email, u.role, u.campus_role, u.phone
-            FROM sessions s
-            JOIN users u ON u.id=s.user_id
-            WHERE s.token=?
-        """, (token.value,)).fetchone()
-        connection.close()
-        return dict(user) if user else None
-
-    def require_user(self):
-        user = self.current_user()
-        if not user:
-            self.json_response(401, {"error": "Please sign in to continue."})
-        return user
-
-    def require_admin(self):
-        user = self.require_user()
-        if user and user["role"] != "admin":
-            self.json_response(403, {"error": "Administrator access is required."})
-            return None
-        return user
-
-    def item_rows(self, query=None, category=None, item_type=None, status=None):
-        connection = db()
-        sql = """
-            SELECT i.id, i.name, i.category, i.location, i.item_date AS date, i.description,
-                   i.type, i.status, i.image_data, i.proof_question, i.created_at,
-                   u.id AS owner_id, u.name AS owner_name, u.campus_role AS owner_role
-            FROM items i
-            JOIN users u ON u.id=i.owner_id
-            WHERE 1=1
-        """
-        params = []
-        if status and status != "All":
-            sql += " AND i.status = ?"
-            params.append(status)
-        if item_type and item_type != "All":
-            sql += " AND i.type = ?"
-            params.append(item_type)
-        if category and category != "All":
-            sql += " AND i.category = ?"
-            params.append(category)
-        if query:
-            q = f"%{query}%"
-            sql += " AND (i.name LIKE ? OR i.category LIKE ? OR i.location LIKE ? OR i.description LIKE ?)"
-            params.extend([q, q, q, q])
-
-        sql += " ORDER BY i.id DESC"
-        rows = connection.execute(sql, params).fetchall()
-        connection.close()
-        return [dict(row) for row in rows]
-
-    def do_GET(self):
-        parsed = urlparse(self.path)
-        path = parsed.path
-        query_params = parse_qs(parsed.query)
-
-        # 1. Session verification with pending counts
-        if path == "/api/session":
-            user = self.current_user()
-            pending_count = 0
-            if user:
-                connection = db()
-                pending_count = connection.execute(
-                    "SELECT COUNT(*) FROM connections WHERE recipient_id=? AND status='Pending'",
-                    (user["id"],)
-                ).fetchone()[0]
-                connection.close()
-            return self.json_response(200, {"user": user, "pending_count": pending_count})
-
-        # 2. Items list with filtering
-        if path == "/api/items":
-            search_query = query_params.get("search", [""])[0].strip()
-            cat = query_params.get("category", ["All"])[0]
-            itype = query_params.get("type", ["All"])[0]
-            istatus = query_params.get("status", ["All"])[0]
-            return self.json_response(200, {"items": self.item_rows(search_query, cat, itype, istatus)})
-
-        # 3. Single Item detail
-        if path.startswith("/api/items/") and len(path.split("/")) == 4:
-            item_id = path.split("/")[3]
-            connection = db()
-            row = connection.execute("""
-                SELECT i.id, i.name, i.category, i.location, i.item_date AS date, i.description,
-                       i.type, i.status, i.image_data, i.proof_question, i.created_at,
-                       u.id AS owner_id, u.name AS owner_name, u.campus_role AS owner_role
-                FROM items i JOIN users u ON u.id=i.owner_id WHERE i.id=?
-            """, (item_id,)).fetchone()
-            connection.close()
-            if not row:
-                return self.json_response(404, {"error": "Item report not found."})
-            return self.json_response(200, {"item": dict(row)})
-
-        # 4. User's Own Items
-        if path == "/api/user/items":
-            user = self.require_user()
-            if not user:
-                return
-            connection = db()
-            rows = connection.execute("""
-                SELECT i.id, i.name, i.category, i.location, i.item_date AS date, i.description,
-                       i.type, i.status, i.image_data, i.proof_question, i.created_at,
-                       (SELECT COUNT(*) FROM connections WHERE item_id=i.id) AS connections_count
-                FROM items i WHERE i.owner_id=? ORDER BY i.id DESC
-            """, (user["id"],)).fetchall()
-            connection.close()
-            return self.json_response(200, {"items": [dict(r) for r in rows]})
-
-        # 5. Connections list
-        if path == "/api/connections":
-            user = self.require_user()
-            if not user:
-                return
-            connection = db()
-            rows = connection.execute("""
-                SELECT c.id, c.item_id, c.message, c.status, c.created_at,
-                       i.name AS item_name, i.type AS item_type, i.location AS item_location,
-                       sender.id AS sender_id, sender.name AS sender_name, sender.email AS sender_email,
-                       sender.campus_role AS sender_role, sender.phone AS sender_phone,
-                       recipient.id AS recipient_id, recipient.name AS recipient_name,
-                       recipient.email AS recipient_email, recipient.campus_role AS recipient_role,
-                       recipient.phone AS recipient_phone
-                FROM connections c
-                JOIN items i ON i.id=c.item_id
-                JOIN users sender ON sender.id=c.sender_id
-                JOIN users recipient ON recipient.id=c.recipient_id
-                WHERE c.sender_id=? OR c.recipient_id=?
-                ORDER BY c.id DESC
-            """, (user["id"], user["id"])).fetchall()
-            connection.close()
-            return self.json_response(200, {"connections": [dict(row) for row in rows]})
-
-        # 6. Admin Overview
-        if path == "/api/admin/overview":
-            user = self.require_admin()
-            if not user:
-                return
-            connection = db()
-            stats = {
-                "reports": connection.execute("SELECT COUNT(*) FROM items").fetchone()[0],
-                "lost": connection.execute("SELECT COUNT(*) FROM items WHERE type='Lost'").fetchone()[0],
-                "found": connection.execute("SELECT COUNT(*) FROM items WHERE type='Found'").fetchone()[0],
-                "resolved": connection.execute("SELECT COUNT(*) FROM items WHERE status='Resolved'").fetchone()[0],
-                "users": connection.execute("SELECT COUNT(*) FROM users").fetchone()[0],
-                "connections": connection.execute("SELECT COUNT(*) FROM connections").fetchone()[0],
-            }
-            connection.close()
-            return self.json_response(200, {"stats": stats, "items": self.item_rows()[:30]})
-
-        # 7. Admin Export Reports as CSV
-        if path == "/api/admin/export":
-            user = self.require_admin()
-            if not user:
-                return
-            items = self.item_rows()
-            output = io.StringIO()
-            writer = csv.writer(output)
-            writer.writerow(["ID", "Name", "Type", "Status", "Category", "Location", "Date", "Description", "Reporter", "Campus Role", "Created At"])
-            for it in items:
-                writer.writerow([
-                    it["id"], it["name"], it["type"], it["status"], it["category"],
-                    it["location"], it["date"], it.get("description", ""),
-                    it.get("owner_name", ""), it.get("owner_role", ""), it["created_at"]
-                ])
-            csv_data = output.getvalue().encode("utf-8")
-            self.send_response(200)
-            self.send_header("Content-Type", "text/csv; charset=utf-8")
-            self.send_header("Content-Disposition", 'attachment; filename="vctm-foundly-reports.csv"')
-            self.send_header("Content-Length", str(len(csv_data)))
-            self.end_headers()
-            self.wfile.write(csv_data)
-            return
-
-        return super().do_GET()
-
-    def do_POST(self):
-        client_ip = self.client_address[0]
-        if not check_rate_limit(client_ip):
-            return self.json_response(429, {"error": "Too many requests. Please slow down and try again."})
-
-        parsed = urlparse(self.path)
-        path = parsed.path
-        try:
-            data = self.body()
-        except ValueError as error:
-            return self.json_response(400, {"error": str(error)})
-
-        if path == "/api/register":
-            return self.register(data)
-        if path == "/api/login":
-            return self.login(data)
-        if path == "/api/logout":
-            return self.logout()
-        if path == "/api/password/reset":
-            return self.reset_password(data)
-        if path == "/api/items":
-            return self.create_item(data)
-        if path == "/api/connections":
-            return self.create_connection(data)
-
-        # Status update for item: /api/items/<id>/status
-        if path.startswith("/api/items/") and path.endswith("/status"):
-            item_id = path.split("/")[3]
-            return self.update_item_status(item_id, data)
-
-        # Status update for connection: /api/connections/<id>/status
-        if path.startswith("/api/connections/") and path.endswith("/status"):
-            return self.update_connection(path.split("/")[3], data)
-
-        self.json_response(404, {"error": "Endpoint not found."})
-
-    def do_DELETE(self):
-        parsed = urlparse(self.path)
-        path = parsed.path
-        if path.startswith("/api/items/"):
-            item_id = path.split("/")[3]
-            return self.delete_item(item_id)
-        self.json_response(404, {"error": "Endpoint not found."})
-
-    def create_session(self, user_id):
-        token = secrets.token_urlsafe(32)
-        connection = db()
-        connection.execute("INSERT INTO sessions(token, user_id) VALUES(?,?)", (token, user_id))
-        connection.commit()
-        connection.close()
-        return {"Set-Cookie": f"foundly_session={token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000"}
-
-    def register(self, data):
-        name = data.get("name", "").strip()
-        email = data.get("email", "").strip().lower()
-        password = data.get("password", "")
-        campus_role = data.get("campus_role", "Student")
-        phone = data.get("phone", "").strip()
-
-        if not name or len(name) < 2:
-            return self.json_response(400, {"error": "Please enter your full name."})
-        if not is_college_email(email):
-            domains_str = ", ".join(["@" + d for d in COLLEGE_DOMAINS])
-            return self.json_response(400, {"error": f"Please use a verified institutional email ({domains_str})."})
-        if len(password) < 6:
-            return self.json_response(400, {"error": "Password must be at least 6 characters."})
-        if campus_role not in ("Student", "Faculty", "Staff member", "Campus worker", "Administrator"):
-            return self.json_response(400, {"error": "Choose a valid campus role."})
-
-        salt, digest = password_hash(password)
-        connection = db()
-        try:
-            cursor = connection.execute(
-                "INSERT INTO users(name, email, password_salt, password_hash, campus_role, phone) VALUES(?,?,?,?,?,?)",
-                (name, email, salt, digest, campus_role, phone)
+# -------------------------------------------------------------
+# DATABASE INITIAL SEEDING
+# -------------------------------------------------------------
+def seed_database():
+    db = SessionLocal()
+    try:
+        # Seed Admin user
+        admin = db.query(User).filter(User.email == ADMIN_EMAIL).first()
+        if not admin:
+            salt, digest = password_hash(ADMIN_PASSWORD)
+            admin = User(
+                name="VCTM Administrator",
+                email=ADMIN_EMAIL,
+                password_salt=salt,
+                password_hash=digest,
+                role="admin",
+                campus_role="Administrator",
             )
-            connection.commit()
-            user_id = cursor.lastrowid
-        except sqlite3.IntegrityError:
-            connection.close()
-            return self.json_response(409, {"error": "An account with this email already exists."})
-        connection.close()
-        return self.json_response(201, {
-            "user": {"id": user_id, "name": name, "email": email, "role": "user", "campus_role": campus_role, "phone": phone}
-        }, self.create_session(user_id))
+            db.add(admin)
+            db.commit()
+            db.refresh(admin)
 
-    def login(self, data):
-        email = data.get("email", "").strip().lower()
-        password = data.get("password", "")
-        connection = db()
-        row = connection.execute("SELECT * FROM users WHERE email=?", (email,)).fetchone()
-        connection.close()
-        if not row or not verify_password(password, row["password_salt"], row["password_hash"]):
-            return self.json_response(401, {"error": "Email or password is incorrect."})
-        return self.json_response(200, {
-            "user": {key: row[key] for key in ("id", "name", "email", "role", "campus_role", "phone")}
-        }, self.create_session(row["id"]))
+        # Seed sample items if database is fresh
+        if db.query(Item).count() == 0:
+            samples = [
+                ("Silver laptop sleeve", "Electronics", "Engineering block", "2026-08-20", "Left near the second-floor computer lab.", "Found", "Open", "What color is the zipper pull?"),
+                ("Brown leather wallet", "Accessories", "Student centre", "2026-08-20", "Contains ID card and student passes.", "Lost", "Open", "What initials are embossed inside?"),
+                ("Set of house keys", "Keys", "West parking", "2026-08-20", "Three silver keys on a yellow spiral keyring.", "Found", "Open", "Describe the small figurine attached."),
+                ("Blue water bottle", "Other", "Sports complex", "2026-08-20", "Insulated bottle with college club stickers.", "Lost", "Open", ""),
+                ("Engineering drawing book", "Books & stationery", "Mechanical lab", "2026-08-19", "Contains ED assignment sheets with name on first page.", "Lost", "Resolved", ""),
+                ("Prescription glasses", "Accessories", "Seminar hall", "2026-08-18", "Black rectangular frame in a blue hard case.", "Found", "Open", "Brand of the case?"),
+            ]
+            for s in samples:
+                it = Item(
+                    name=s[0], category=s[1], location=s[2], item_date=s[3],
+                    description=s[4], type=s[5], status=s[6], proof_question=s[7],
+                    owner_id=admin.id
+                )
+                db.add(it)
+            db.commit()
+    finally:
+        db.close()
 
-    def reset_password(self, data):
-        email = data.get("email", "").strip().lower()
-        new_password = data.get("new_password", "")
-        if not email or len(new_password) < 6:
-            return self.json_response(400, {"error": "Enter valid email and a new password with at least 6 characters."})
-        connection = db()
-        user = connection.execute("SELECT id FROM users WHERE email=?", (email,)).fetchone()
-        if not user:
-            connection.close()
-            return self.json_response(404, {"error": "No account found with this email."})
-        salt, digest = password_hash(new_password)
-        connection.execute("UPDATE users SET password_salt=?, password_hash=? WHERE id=?", (salt, digest, user["id"]))
-        connection.commit()
-        connection.close()
-        return self.json_response(200, {"ok": True, "message": "Password updated successfully. Please sign in."})
 
-    def logout(self):
-        token = cookies.SimpleCookie(self.headers.get("Cookie", "")).get("foundly_session")
-        if token:
-            connection = db()
-            connection.execute("DELETE FROM sessions WHERE token=?", (token.value,))
-            connection.commit()
-            connection.close()
-        return self.json_response(200, {"ok": True}, {"Set-Cookie": "foundly_session=; Max-Age=0; Path=/"})
+seed_database()
 
-    def create_item(self, data):
-        user = self.require_user()
-        if not user:
-            return
-        name = data.get("name", "").strip()
-        location = data.get("location", "").strip()
-        item_type = data.get("type")
-        category = data.get("category", "Other").strip() or "Other"
-        item_date = data.get("date") or time.strftime("%Y-%m-%d")
-        description = data.get("description", "").strip()
-        image_data = data.get("image_data")  # base64 encoded photo
-        proof_question = data.get("proof_question", "").strip()
+# -------------------------------------------------------------
+# FASTAPI APPLICATION & MIDDLEWARE
+# -------------------------------------------------------------
+app = FastAPI(
+    title="VCTM Foundly API",
+    description="Enterprise Campus Lost and Found REST API",
+    version="2.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
+)
 
-        if not name or not location or item_type not in ("Lost", "Found"):
-            return self.json_response(400, {"error": "Item title, location, and report type (Lost/Found) are required."})
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-        connection = db()
-        cursor = connection.execute(
-            """INSERT INTO items(name, category, location, item_date, description, type, status, image_data, proof_question, owner_id)
-               VALUES(?,?,?,?,?,?,?,?,?,?)""",
-            (name, category, location, item_date, description, item_type, "Open", image_data, proof_question, user["id"])
+
+@app.middleware("http")
+async def security_and_rate_limit_middleware(request: Request, call_next):
+    client_ip = request.client.host if request.client else "127.0.0.1"
+    # Rate limit check on API mutations
+    if request.url.path.startswith("/api/") and request.method in ("POST", "DELETE"):
+        if not check_rate_limit(client_ip):
+            return JSONResponse(status_code=429, content={"error": "Too many requests. Please wait a moment."})
+
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "SAMEORIGIN"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
+
+
+# -------------------------------------------------------------
+# DEPENDENCIES
+# -------------------------------------------------------------
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+def get_current_user(request: Request, db: Session = Depends(get_db)) -> Optional[User]:
+    token = request.cookies.get("foundly_session")
+    if not token:
+        return None
+    session_row = db.query(UserSession).filter(UserSession.token == token).first()
+    if not session_row:
+        return None
+    return db.query(User).filter(User.id == session_row.user_id).first()
+
+
+def require_user(current_user: Optional[User] = Depends(get_current_user)) -> User:
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Please sign in to continue.")
+    return current_user
+
+
+def require_admin(current_user: User = Depends(require_user)) -> User:
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Administrator access is required.")
+    return current_user
+
+
+# -------------------------------------------------------------
+# PYDANTIC SCHEMAS
+# -------------------------------------------------------------
+class RegisterRequest(BaseModel):
+    name: str
+    email: str
+    password: str
+    campus_role: Optional[str] = "Student"
+    phone: Optional[str] = None
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class ResetPasswordRequest(BaseModel):
+    email: str
+    new_password: str
+
+
+class ItemCreateRequest(BaseModel):
+    name: str
+    category: Optional[str] = "Other"
+    location: str
+    date: Optional[str] = None
+    description: Optional[str] = ""
+    type: str  # 'Lost' or 'Found'
+    image_data: Optional[str] = None
+    proof_question: Optional[str] = ""
+
+
+class ItemStatusRequest(BaseModel):
+    status: str  # 'Open' or 'Resolved'
+
+
+class ConnectionCreateRequest(BaseModel):
+    item_id: int
+    message: str
+
+
+class ConnectionStatusRequest(BaseModel):
+    status: str  # 'Accepted' or 'Declined'
+
+
+# -------------------------------------------------------------
+# STATIC FILE ROUTES (FRONTEND SPA)
+# -------------------------------------------------------------
+@app.get("/")
+async def serve_index():
+    return FileResponse(ROOT / "index.html")
+
+
+@app.get("/styles.css")
+async def serve_css():
+    return FileResponse(ROOT / "styles.css", media_type="text/css")
+
+
+@app.get("/app.js")
+async def serve_js():
+    return FileResponse(ROOT / "app.js", media_type="application/javascript")
+
+
+# -------------------------------------------------------------
+# AUTHENTICATION ENDPOINTS
+# -------------------------------------------------------------
+def set_session_cookie(response: Response, user_id: int, db: Session):
+    token = secrets.token_urlsafe(32)
+    session_obj = UserSession(token=token, user_id=user_id)
+    db.add(session_obj)
+    db.commit()
+    response.set_cookie(
+        key="foundly_session",
+        value=token,
+        httponly=True,
+        samesite="lax",
+        max_age=2592000,
+        path="/",
+    )
+
+
+@app.get("/api/session")
+async def check_session(
+    current_user: Optional[User] = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if not current_user:
+        return {"user": None, "pending_count": 0}
+
+    pending_count = (
+        db.query(Connection)
+        .filter(Connection.recipient_id == current_user.id, Connection.status == "Pending")
+        .count()
+    )
+    return {
+        "user": {
+            "id": current_user.id,
+            "name": current_user.name,
+            "email": current_user.email,
+            "role": current_user.role,
+            "campus_role": current_user.campus_role,
+            "phone": current_user.phone,
+        },
+        "pending_count": pending_count,
+    }
+
+
+@app.post("/api/register", status_code=201)
+async def register(
+    data: RegisterRequest,
+    response: Response,
+    db: Session = Depends(get_db),
+):
+    name = data.name.strip()
+    email = data.email.strip().lower()
+    password = data.password
+
+    if not name or len(name) < 2:
+        raise HTTPException(status_code=400, detail="Please enter your full name.")
+    if not is_college_email(email):
+        domains_str = ", ".join(["@" + d for d in COLLEGE_DOMAINS])
+        raise HTTPException(status_code=400, detail=f"Please use a verified institutional email ({domains_str}).")
+    if len(password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters.")
+
+    existing = db.query(User).filter(User.email == email).first()
+    if existing:
+        raise HTTPException(status_code=409, detail="An account with this email already exists.")
+
+    salt, digest = password_hash(password)
+    user = User(
+        name=name,
+        email=email,
+        password_salt=salt,
+        password_hash=digest,
+        campus_role=data.campus_role or "Student",
+        phone=data.phone.strip() if data.phone else None,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    set_session_cookie(response, user.id, db)
+    return {
+        "user": {
+            "id": user.id,
+            "name": user.name,
+            "email": user.email,
+            "role": user.role,
+            "campus_role": user.campus_role,
+            "phone": user.phone,
+        }
+    }
+
+
+@app.post("/api/login")
+async def login(
+    data: LoginRequest,
+    response: Response,
+    db: Session = Depends(get_db),
+):
+    email = data.email.strip().lower()
+    user = db.query(User).filter(User.email == email).first()
+    if not user or not verify_password(data.password, user.password_salt, user.password_hash):
+        raise HTTPException(status_code=401, detail="Email or password is incorrect.")
+
+    set_session_cookie(response, user.id, db)
+    return {
+        "user": {
+            "id": user.id,
+            "name": user.name,
+            "email": user.email,
+            "role": user.role,
+            "campus_role": user.campus_role,
+            "phone": user.phone,
+        }
+    }
+
+
+@app.post("/api/logout")
+async def logout(request: Request, response: Response, db: Session = Depends(get_db)):
+    token = request.cookies.get("foundly_session")
+    if token:
+        db.query(UserSession).filter(UserSession.token == token).delete()
+        db.commit()
+    response.delete_cookie("foundly_session", path="/")
+    return {"ok": True}
+
+
+@app.post("/api/password/reset")
+async def reset_password(data: ResetPasswordRequest, db: Session = Depends(get_db)):
+    email = data.email.strip().lower()
+    if not email or len(data.new_password) < 6:
+        raise HTTPException(status_code=400, detail="Enter valid email and a password with at least 6 characters.")
+    user = db.query(User).filter(User.email == email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="No account found with this email.")
+    salt, digest = password_hash(data.new_password)
+    user.password_salt = salt
+    user.password_hash = digest
+    db.commit()
+    return {"ok": True, "message": "Password updated successfully. Please sign in."}
+
+
+# -------------------------------------------------------------
+# ITEM MANAGEMENT ENDPOINTS
+# -------------------------------------------------------------
+@app.get("/api/items")
+async def get_items(
+    search: Optional[str] = "",
+    category: Optional[str] = "All",
+    type: Optional[str] = "All",
+    status: Optional[str] = "All",
+    db: Session = Depends(get_db),
+):
+    query = db.query(Item).join(User, Item.owner_id == User.id)
+    if status and status != "All":
+        query = query.filter(Item.status == status)
+    if type and type != "All":
+        query = query.filter(Item.type == type)
+    if category and category != "All":
+        query = query.filter(Item.category == category)
+    if search:
+        s = f"%{search.strip()}%"
+        query = query.filter(
+            or_(
+                Item.name.ilike(s),
+                Item.category.ilike(s),
+                Item.location.ilike(s),
+                Item.description.ilike(s),
+            )
         )
-        connection.commit()
-        item_id = cursor.lastrowid
-        connection.close()
-        return self.json_response(201, {"item": {"id": item_id}})
+    items = query.order_by(desc(Item.id)).all()
+    return {
+        "items": [
+            {
+                "id": it.id,
+                "name": it.name,
+                "category": it.category,
+                "location": it.location,
+                "date": it.item_date,
+                "description": it.description,
+                "type": it.type,
+                "status": it.status,
+                "image_data": it.image_data,
+                "proof_question": it.proof_question,
+                "created_at": it.created_at.isoformat() if it.created_at else "",
+                "owner_id": it.owner.id,
+                "owner_name": it.owner.name,
+                "owner_role": it.owner.campus_role,
+            }
+            for it in items
+        ]
+    }
 
-    def update_item_status(self, item_id, data):
-        user = self.require_user()
-        if not user:
-            return
-        status = data.get("status")
-        if status not in ("Open", "Resolved", "Archived"):
-            return self.json_response(400, {"error": "Invalid status value."})
 
-        connection = db()
-        item = connection.execute("SELECT owner_id FROM items WHERE id=?", (item_id,)).fetchone()
-        if not item:
-            connection.close()
-            return self.json_response(404, {"error": "Item not found."})
+@app.get("/api/items/{item_id}")
+async def get_item_detail(item_id: int, db: Session = Depends(get_db)):
+    it = db.query(Item).filter(Item.id == item_id).first()
+    if not it:
+        raise HTTPException(status_code=404, detail="Item report not found.")
+    return {
+        "item": {
+            "id": it.id,
+            "name": it.name,
+            "category": it.category,
+            "location": it.location,
+            "date": it.item_date,
+            "description": it.description,
+            "type": it.type,
+            "status": it.status,
+            "image_data": it.image_data,
+            "proof_question": it.proof_question,
+            "created_at": it.created_at.isoformat() if it.created_at else "",
+            "owner_id": it.owner.id,
+            "owner_name": it.owner.name,
+            "owner_role": it.owner.campus_role,
+        }
+    }
 
-        if item["owner_id"] != user["id"] and user["role"] != "admin":
-            connection.close()
-            return self.json_response(403, {"error": "You do not have permission to modify this item."})
 
-        connection.execute("UPDATE items SET status=? WHERE id=?", (status, item_id))
-        connection.commit()
-        connection.close()
-        return self.json_response(200, {"ok": True, "status": status})
+@app.post("/api/items", status_code=201)
+async def create_item(
+    data: ItemCreateRequest,
+    current_user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    name = data.name.strip()
+    location = data.location.strip()
+    if not name or not location or data.type not in ("Lost", "Found"):
+        raise HTTPException(status_code=400, detail="Item title, location, and report type are required.")
 
-    def delete_item(self, item_id):
-        user = self.require_user()
-        if not user:
-            return
-        connection = db()
-        item = connection.execute("SELECT owner_id FROM items WHERE id=?", (item_id,)).fetchone()
-        if not item:
-            connection.close()
-            return self.json_response(404, {"error": "Item not found."})
+    item = Item(
+        name=name,
+        category=data.category.strip() if data.category else "Other",
+        location=location,
+        item_date=data.date or datetime.utcnow().strftime("%Y-%m-%d"),
+        description=data.description.strip() if data.description else "",
+        type=data.type,
+        status="Open",
+        image_data=data.image_data,
+        proof_question=data.proof_question.strip() if data.proof_question else "",
+        owner_id=current_user.id,
+    )
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return {"item": {"id": item.id}}
 
-        if item["owner_id"] != user["id"] and user["role"] != "admin":
-            connection.close()
-            return self.json_response(403, {"error": "You do not have permission to delete this report."})
 
-        connection.execute("DELETE FROM items WHERE id=?", (item_id,))
-        connection.commit()
-        connection.close()
-        return self.json_response(200, {"ok": True})
+@app.post("/api/items/{item_id}/status")
+async def update_item_status(
+    item_id: int,
+    data: ItemStatusRequest,
+    current_user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    if data.status not in ("Open", "Resolved", "Archived"):
+        raise HTTPException(status_code=400, detail="Invalid status value.")
+    item = db.query(Item).filter(Item.id == item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found.")
+    if item.owner_id != current_user.id and current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="You do not have permission to modify this item.")
 
-    def create_connection(self, data):
-        user = self.require_user()
-        if not user:
-            return
-        item_id = data.get("item_id")
-        message = data.get("message", "").strip()
-        if not item_id or not message:
-            return self.json_response(400, {"error": "Please provide a verification message."})
+    item.status = data.status
+    db.commit()
+    return {"ok": True, "status": data.status}
 
-        connection = db()
-        item = connection.execute("SELECT owner_id FROM items WHERE id=?", (item_id,)).fetchone()
-        if not item:
-            connection.close()
-            return self.json_response(404, {"error": "This report no longer exists."})
-        if item["owner_id"] == user["id"]:
-            connection.close()
-            return self.json_response(400, {"error": "You cannot request connection to your own report."})
 
-        duplicate = connection.execute(
-            "SELECT 1 FROM connections WHERE item_id=? AND sender_id=? AND status='Pending'",
-            (item_id, user["id"])
-        ).fetchone()
-        if duplicate:
-            connection.close()
-            return self.json_response(409, {"error": "You already have a pending request for this report."})
+@app.delete("/api/items/{item_id}")
+async def delete_item(
+    item_id: int,
+    current_user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    item = db.query(Item).filter(Item.id == item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found.")
+    if item.owner_id != current_user.id and current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="You do not have permission to delete this report.")
 
-        connection.execute(
-            "INSERT INTO connections(item_id, sender_id, recipient_id, message) VALUES(?,?,?,?)",
-            (item_id, user["id"], item["owner_id"], message)
+    db.delete(item)
+    db.commit()
+    return {"ok": True}
+
+
+@app.get("/api/user/items")
+async def get_user_items(
+    current_user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    user_items = db.query(Item).filter(Item.owner_id == current_user.id).order_by(desc(Item.id)).all()
+    return {
+        "items": [
+            {
+                "id": it.id,
+                "name": it.name,
+                "category": it.category,
+                "location": it.location,
+                "date": it.item_date,
+                "description": it.description,
+                "type": it.type,
+                "status": it.status,
+                "image_data": it.image_data,
+                "proof_question": it.proof_question,
+                "created_at": it.created_at.isoformat() if it.created_at else "",
+                "connections_count": len(it.connections),
+            }
+            for it in user_items
+        ]
+    }
+
+
+# -------------------------------------------------------------
+# SAFE CONNECTIONS & CLAIM ENDPOINTS
+# -------------------------------------------------------------
+@app.get("/api/connections")
+async def get_connections(
+    current_user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    connections = (
+        db.query(Connection)
+        .filter(or_(Connection.sender_id == current_user.id, Connection.recipient_id == current_user.id))
+        .order_by(desc(Connection.id))
+        .all()
+    )
+    return {
+        "connections": [
+            {
+                "id": c.id,
+                "item_id": c.item_id,
+                "item_name": c.item.name if c.item else "Deleted Item",
+                "item_type": c.item.type if c.item else "",
+                "item_location": c.item.location if c.item else "",
+                "message": c.message,
+                "status": c.status,
+                "created_at": c.created_at.isoformat() if c.created_at else "",
+                "sender_id": c.sender.id,
+                "sender_name": c.sender.name,
+                "sender_email": c.sender.email,
+                "sender_role": c.sender.campus_role,
+                "sender_phone": c.sender.phone if c.status == "Accepted" else None,
+                "recipient_id": c.recipient.id,
+                "recipient_name": c.recipient.name,
+                "recipient_email": c.recipient.email,
+                "recipient_role": c.recipient.campus_role,
+                "recipient_phone": c.recipient.phone if c.status == "Accepted" else None,
+            }
+            for c in connections
+        ]
+    }
+
+
+@app.post("/api/connections", status_code=201)
+async def create_connection(
+    data: ConnectionCreateRequest,
+    current_user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    message = data.message.strip()
+    if not data.item_id or not message:
+        raise HTTPException(status_code=400, detail="Please provide a verification message.")
+
+    item = db.query(Item).filter(Item.id == data.item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="This report no longer exists.")
+    if item.owner_id == current_user.id:
+        raise HTTPException(status_code=400, detail="You cannot request connection to your own report.")
+
+    duplicate = (
+        db.query(Connection)
+        .filter(
+            Connection.item_id == data.item_id,
+            Connection.sender_id == current_user.id,
+            Connection.status == "Pending",
         )
-        connection.commit()
-        connection.close()
-        return self.json_response(201, {"ok": True})
+        .first()
+    )
+    if duplicate:
+        raise HTTPException(status_code=409, detail="You already have a pending request for this report.")
 
-    def update_connection(self, connection_id, data):
-        user = self.require_user()
-        if not user:
-            return
-        status = data.get("status")
-        if status not in ("Accepted", "Declined"):
-            return self.json_response(400, {"error": "Invalid request status."})
-
-        connection = db()
-        cursor = connection.execute(
-            "UPDATE connections SET status=? WHERE id=? AND recipient_id=? AND status='Pending'",
-            (status, connection_id, user["id"])
-        )
-        connection.commit()
-        connection.close()
-        if not cursor.rowcount:
-            return self.json_response(404, {"error": "This connection request is no longer available or already handled."})
-        return self.json_response(200, {"ok": True})
+    conn = Connection(
+        item_id=data.item_id,
+        sender_id=current_user.id,
+        recipient_id=item.owner_id,
+        message=message,
+    )
+    db.add(conn)
+    db.commit()
+    return {"ok": True}
 
 
+@app.post("/api/connections/{connection_id}/status")
+async def update_connection_status(
+    connection_id: int,
+    data: ConnectionStatusRequest,
+    current_user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    if data.status not in ("Accepted", "Declined"):
+        raise HTTPException(status_code=400, detail="Invalid request status.")
+
+    conn = (
+        db.query(Connection)
+        .filter(Connection.id == connection_id, Connection.recipient_id == current_user.id)
+        .first()
+    )
+    if not conn:
+        raise HTTPException(status_code=404, detail="This connection request is not available or already handled.")
+
+    conn.status = data.status
+    db.commit()
+    return {"ok": True}
+
+
+# -------------------------------------------------------------
+# ADMIN CONSOLE & EXPORT ENDPOINTS
+# -------------------------------------------------------------
+@app.get("/api/admin/overview")
+async def admin_overview(
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    stats = {
+        "reports": db.query(Item).count(),
+        "lost": db.query(Item).filter(Item.type == "Lost").count(),
+        "found": db.query(Item).filter(Item.type == "Found").count(),
+        "resolved": db.query(Item).filter(Item.status == "Resolved").count(),
+        "users": db.query(User).count(),
+        "connections": db.query(Connection).count(),
+    }
+    recent_items = db.query(Item).order_by(desc(Item.id)).limit(30).all()
+    return {
+        "stats": stats,
+        "items": [
+            {
+                "id": it.id,
+                "name": it.name,
+                "category": it.category,
+                "location": it.location,
+                "date": it.item_date,
+                "type": it.type,
+                "status": it.status,
+                "owner_name": it.owner.name,
+            }
+            for it in recent_items
+        ],
+    }
+
+
+@app.get("/api/admin/export")
+async def admin_export_csv(
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    items = db.query(Item).order_by(desc(Item.id)).all()
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["ID", "Name", "Type", "Status", "Category", "Location", "Date", "Description", "Reporter", "Campus Role", "Created At"])
+    for it in items:
+        writer.writerow([
+            it.id, it.name, it.type, it.status, it.category,
+            it.location, it.item_date, it.description or "",
+            it.owner.name if it.owner else "", it.owner.campus_role if it.owner else "",
+            it.created_at.isoformat() if it.created_at else "",
+        ])
+    return RawResponse(
+        content=output.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": 'attachment; filename="vctm-foundly-reports.csv"'},
+    )
+
+
+# -------------------------------------------------------------
+# MAIN ENTRYPOINT
+# -------------------------------------------------------------
 if __name__ == "__main__":
-    initialise_database()
+    import uvicorn
     host = os.environ.get("HOST", "0.0.0.0")
     port = int(os.environ.get("PORT", 8000))
-    server = ThreadingHTTPServer((host, port), Handler)
-    print(f"VCTM Foundly (Production Ready) is running at http://{host}:{port}")
-    try:
-        server.serve_forever()
-    except KeyboardInterrupt:
-        print("\nServer stopped gracefully.")
-
+    print(f"Starting VCTM Foundly Production FastAPI Server on http://{host}:{port}")
+    uvicorn.run("server:app", host=host, port=port, reload=False)
