@@ -311,6 +311,48 @@ main {
   transform: translateX(3px);
   color: var(--coral);
 }
+
+/* User's Personal Lost & Found Items Section inside Dashboard */
+.user-dashboard-items {
+  margin-top: 32px;
+  padding-top: 28px;
+  border-top: 1px solid #f0eee9;
+}
+.user-dashboard-items-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-bottom: 20px;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.user-dashboard-items-header h2 {
+  margin: 0 0 4px 0;
+  font-size: 22px;
+}
+.user-items-actions {
+  display: flex;
+  gap: 10px;
+}
+.user-empty-dashboard {
+  grid-column: 1 / -1;
+  background: #fcfbf9;
+  border: 1px dashed #dcd6cb;
+  border-radius: 14px;
+  padding: 36px 20px;
+  text-align: center;
+}
+.user-empty-dashboard b {
+  display: block;
+  font-size: 16px;
+  margin-bottom: 6px;
+  color: var(--ink);
+}
+.user-empty-dashboard p {
+  color: var(--muted);
+  font-size: 12px;
+  margin: 0 0 16px 0;
+}
 .member-status-card {
   cursor: default;
 }

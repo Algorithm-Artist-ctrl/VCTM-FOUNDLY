@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>VCTM Foundly — Verified Campus Lost & Found</title>
-    <link rel="stylesheet" href="styles.css?v=2.7.0" />
+    <link rel="stylesheet" href="styles.css?v=2.8.0" />
   </head>
   <body>
     <div class="ambient ambient-one"></div>
@@ -98,6 +98,24 @@
             </div>
             <strong>⚙</strong>
           </article>
+        </div>
+
+        <!-- User's Personal Lost & Found Items Feed -->
+        <div class="user-dashboard-items">
+          <div class="user-dashboard-items-header">
+            <div>
+              <p class="eyebrow"><span></span> PERSONAL REPOSITORY</p>
+              <h2>📦 Your Lost &amp; Found Items</h2>
+              <p class="section-subtext">Items reported by you. Track status, edit posts, and manage incoming claims.</p>
+            </div>
+            <div class="user-items-actions">
+              <button class="button button-primary button-sm" data-open-report="Lost">＋ Report Lost Item</button>
+              <button class="button button-secondary button-sm" data-open-report="Found">＋ Report Found Item</button>
+            </div>
+          </div>
+          <div class="items-grid" id="userDashboardItemsGrid">
+            <!-- Populated dynamically with only this user's items -->
+          </div>
         </div>
       </section>
 
@@ -668,6 +686,6 @@
 
     <!-- Supabase Cloud Client SDK -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="app.js?v=2.7.0"></script>
+    <script src="app.js?v=2.8.0"></script>
   </body>
 </html>

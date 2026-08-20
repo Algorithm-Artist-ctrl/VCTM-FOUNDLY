@@ -944,6 +944,75 @@ function syncUser() {
     const filterMyPostsCount = document.querySelector('#filterMyPostsCount');
     if (myPostsPill) myPostsPill.classList.remove('hidden');
     if (filterMyPostsCount) filterMyPostsCount.textContent = myReportsCount;
+
+    // Render Personal Items directly inside Dashboard
+    const userGrid = document.querySelector('#userDashboardItemsGrid');
+    if (userGrid) {
+      const myItems = items.filter((i) => isItemOwner(i));
+      if (!myItems.length) {
+        userGrid.innerHTML = `
+          <div class="user-empty-dashboard">
+            <span style="font-size: 36px; display: block; margin-bottom: 8px;">📋</span>
+            <b>No items reported by you yet</b>
+            <p>Report any lost or found item to automatically track matches, alert the campus, and receive claim requests.</p>
+            <div style="display: flex; justify-content: center; gap: 10px;">
+              <button class="button button-primary button-sm" data-open-report="Lost">＋ Report Lost Item</button>
+              <button class="button button-secondary button-sm" data-open-report="Found">＋ Report Found Item</button>
+            </div>
+          </div>
+        `;
+        userGrid.querySelectorAll('[data-open-report]').forEach((b) =>
+          b.addEventListener('click', () => openReport(b.dataset.openReport))
+        );
+      } else {
+        userGrid.innerHTML = myItems
+          .map((i) => {
+            const isResolved = i.status === 'Resolved';
+            const hasImage = !!i.image_data;
+            const icon = getItemIcon(i.name, i.category, i.description);
+            const mediaHtml = hasImage
+              ? `<img src="${i.image_data}" alt="${escapeHtml(i.name)}" loading="lazy" />`
+              : `<span class="item-icon-display">${icon}</span>`;
+
+            const badgeClass = isResolved
+              ? 'badge-resolved'
+              : i.type === 'Found'
+              ? 'badge-found'
+              : 'badge-lost';
+
+            const badgeText = isResolved
+              ? '✓ RESOLVED'
+              : i.type === 'Found'
+              ? '🟢 FOUND'
+              : '🔴 LOST';
+
+            return `
+            <article class="item-card ${isResolved ? 'is-resolved' : ''} is-my-post" data-item-id="${i.id}">
+              <div class="card-media">
+                ${mediaHtml}
+                <span class="card-owner-badge">⭐ YOUR POST</span>
+                <span class="card-status-badge ${badgeClass}">
+                  ${badgeText}
+                </span>
+              </div>
+              <div class="card-body">
+                <p class="category">${escapeHtml(i.category.toUpperCase())}</p>
+                <h3>${escapeHtml(i.name)}</h3>
+                <div class="card-meta">
+                  <span>⌖ ${escapeHtml(i.location)}</span>
+                  <span>${i.date || ''}</span>
+                </div>
+              </div>
+              <div class="card-bottom action-owner">
+                <span>⚙ Manage Your Post</span>
+                <strong>→</strong>
+              </div>
+            </article>
+          `;
+          })
+          .join('');
+      }
+    }
   } else {
     guestHero?.classList.remove('hidden');
     userHero?.classList.add('hidden');
@@ -1198,6 +1267,11 @@ if (grid) {
     if (card) openItemDetail(Number(card.dataset.itemId));
   });
 }
+
+document.querySelector('#userDashboardItemsGrid')?.addEventListener('click', (e) => {
+  const card = e.target.closest('[data-item-id]');
+  if (card) openItemDetail(Number(card.dataset.itemId));
+});
 
 // -------------------------------------------------------------
 // 10. ADMIN CONSOLE
