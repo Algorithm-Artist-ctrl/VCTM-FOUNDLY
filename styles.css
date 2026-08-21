@@ -431,9 +431,12 @@ h1 em { color: var(--coral); }
 /* Hero Visual Box */
 .hero-visual {
   position: relative;
-  min-height: 440px;
-  display: grid;
-  place-items: center;
+  min-height: 480px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: visible;
+  padding: 40px 20px;
 }
 .orbit {
   position: absolute;
@@ -454,10 +457,11 @@ h1 em { color: var(--coral); }
   position: relative;
   z-index: 2;
   width: 280px;
-  background: #fff;
-  border-radius: 18px;
+  background: #ffffff;
+  border-radius: 20px;
   padding: 24px;
-  box-shadow: var(--shadow);
+  box-shadow: 0 20px 45px rgba(15, 23, 42, 0.08), 0 4px 14px rgba(15, 23, 42, 0.03);
+  border: 1px solid rgba(226, 232, 240, 0.9);
 }
 .featured-top { display: flex; justify-content: space-between; align-items: center; }
 .found-pill {
@@ -641,36 +645,57 @@ h1 em { color: var(--coral); }
 .floating-card {
   position: absolute;
   z-index: 3;
-  background: #fff;
-  border-radius: 12px;
-  padding: 10px 14px;
+  background: #ffffff;
+  border-radius: 14px;
+  padding: 10px 16px;
   display: flex;
   align-items: center;
   gap: 10px;
-  box-shadow: var(--shadow);
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.10), 0 4px 10px rgba(15, 23, 42, 0.04);
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  white-space: nowrap;
+  pointer-events: auto;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
-.floating-card small { display: block; font: 700 9px 'DM Mono'; color: #9da8b8; }
-.floating-card b { font-size: 12px; }
-.match-card { top: 70px; right: 20px; }
+.floating-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 18px 36px rgba(15, 23, 42, 0.14), 0 6px 14px rgba(15, 23, 42, 0.06);
+}
+.floating-card small { display: block; font: 700 9px 'DM Mono'; color: #9da8b8; letter-spacing: 0.5px; }
+.floating-card b { font-size: 13px; color: var(--ink); }
+
+/* Upper-Right Instant Alerts Card — Positioned with clean visible whitespace gap */
+.match-card {
+  top: 36px;
+  left: calc(50% + 158px);
+  right: auto;
+}
 .match-card .sparkle {
   color: #f7a02c;
   background: #fdf3e2;
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   border-radius: 8px;
   display: grid;
   place-items: center;
   font-size: 15px;
 }
-.location-card { bottom: 50px; left: 10px; }
+
+/* Lower-Left Security Points Card — Positioned with clean visible whitespace gap */
+.location-card {
+  bottom: 32px;
+  right: calc(50% + 158px);
+  left: auto;
+}
 .location-card span {
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   border-radius: 8px;
   background: #eff3f8;
   display: grid;
   place-items: center;
   color: #4a678e;
+  font-size: 15px;
 }
 
 /* Quick Action Cards */
@@ -1519,6 +1544,9 @@ body.is-authenticated:not(.is-admin) .matches-section.has-matches {
 /* Responsive Mobile */
 @media (max-width: 860px) {
   .hero { grid-template-columns: 1fr; }
+  .hero-visual { min-height: 440px; }
+  .match-card { left: auto; right: 0; top: 15px; }
+  .location-card { right: auto; left: 0; bottom: 15px; }
   .quick-actions { grid-template-columns: 1fr; }
   .match-pair-card { grid-template-columns: 1fr; }
   .steps-grid { grid-template-columns: 1fr 1fr; }
