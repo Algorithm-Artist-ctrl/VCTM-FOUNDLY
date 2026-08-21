@@ -819,10 +819,35 @@ class FoundlyHandler(SimpleHTTPRequestHandler):
                     self.send_error_json("Administrator cannot delete their own account.", 400)
                     return
                 try:
-                    db._request(f"app_sessions?user_id=eq.{target_user_id}", "DELETE")
-                    db._request(f"connections?requester_id=eq.{target_user_id}", "DELETE")
-                    db._request(f"connections?recipient_id=eq.{target_user_id}", "DELETE")
-                    db._request(f"items?owner_id=eq.{target_user_id}", "DELETE")
+                    # 1. Delete active sessions
+                    try:
+                        db._request(f"app_sessions?user_id=eq.{target_user_id}", "DELETE")
+                    except Exception:
+                        pass
+
+                    # 2. Delete connections as sender or recipient
+                    try:
+                        db._request(f"connections?sender_id=eq.{target_user_id}", "DELETE")
+                    except Exception:
+                        pass
+                    try:
+                        db._request(f"connections?recipient_id=eq.{target_user_id}", "DELETE")
+                    except Exception:
+                        pass
+
+                    # 3. Delete connections on user's items, then delete user's items
+                    try:
+                        user_items = db.get_user_items(target_user_id)
+                        for itm in user_items:
+                            try:
+                                db._request(f"connections?item_id=eq.{itm['id']}", "DELETE")
+                            except Exception:
+                                pass
+                        db._request(f"items?owner_id=eq.{target_user_id}", "DELETE")
+                    except Exception:
+                        pass
+
+                    # 4. Delete user record
                     db._request(f"app_users?id=eq.{target_user_id}", "DELETE")
                 except Exception as e:
                     self.send_error_json(f"Failed to delete user: {e}", 500)
