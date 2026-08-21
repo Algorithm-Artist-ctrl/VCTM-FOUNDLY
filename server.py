@@ -220,13 +220,29 @@ class SupabaseDB:
         conns = []
         for r in res:
             item_info = r.get("items") or {}
+            raw_msg = r.get("message") or ""
+            proof_image = None
+            clean_msg = raw_msg
+            if "[PROOF_IMAGE:" in raw_msg:
+                try:
+                    parts = raw_msg.split("[PROOF_IMAGE:", 1)
+                    before = parts[0]
+                    after = parts[1]
+                    if "]" in after:
+                        img_str, rest = after.split("]", 1)
+                        proof_image = img_str.strip()
+                        clean_msg = (before + rest).strip()
+                except Exception:
+                    pass
+
             c_dict = {
                 "id": r["id"],
                 "item_id": r["item_id"],
                 "item_name": item_info.get("name"),
                 "item_type": item_info.get("type"),
                 "item_location": item_info.get("location"),
-                "message": r["message"],
+                "message": clean_msg,
+                "proof_image": proof_image,
                 "status": r["status"],
                 "created_at": r["created_at"],
                 "sender_id": r["sender_id"],
@@ -723,9 +739,15 @@ class FoundlyHandler(SimpleHTTPRequestHandler):
                     return
                 item_id = body.get("item_id")
                 msg = (body.get("message") or "").strip()
-                if not item_id or not msg:
-                    self.send_error_json("Please provide a claim message.")
+                image_data = body.get("image_data")
+                if not item_id or (not msg and not image_data):
+                    self.send_error_json("Please provide a claim message or photo proof.")
                     return
+                if not msg:
+                    msg = "Attached photo proof for claim verification."
+                if image_data and isinstance(image_data, str) and image_data.startswith("data:image/"):
+                    msg = f"[PROOF_IMAGE:{image_data}] {msg}"
+
                 item = db.get_item_by_id(int(item_id))
                 if not item:
                     self.send_error_json("Report no longer exists.", 404)

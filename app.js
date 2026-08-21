@@ -42,13 +42,22 @@ const resetPasswordDialog = document.querySelector('#resetPasswordDialog');
 const resetPasswordForm = document.querySelector('#resetPasswordForm');
 const adminDialog = document.querySelector('#adminDialog');
 
-// Photo Upload Elements
+// Photo Upload Elements (Report Item)
 const photoDropzone = document.querySelector('#photoDropzone');
 const photoInput = document.querySelector('#photoInput');
 const dropzonePrompt = document.querySelector('#dropzonePrompt');
 const photoPreviewBox = document.querySelector('#photoPreviewBox');
 const photoPreviewImg = document.querySelector('#photoPreviewImg');
 const removePhotoBtn = document.querySelector('#removePhotoBtn');
+
+// Photo Upload Elements (Connect / Claim Proof)
+const connectPhotoDropzone = document.querySelector('#connectPhotoDropzone');
+const connectPhotoInput = document.querySelector('#connectPhotoInput');
+const connectDropzonePrompt = document.querySelector('#connectDropzonePrompt');
+const connectPhotoPreviewBox = document.querySelector('#connectPhotoPreviewBox');
+const connectPhotoPreviewImg = document.querySelector('#connectPhotoPreviewImg');
+const connectRemovePhotoBtn = document.querySelector('#connectRemovePhotoBtn');
+let currentConnectProofImageBase64 = null;
 
 // Helper: Escape HTML
 const escapeHtml = (str) =>
@@ -228,6 +237,96 @@ if (removePhotoBtn) {
   removePhotoBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     clearPhotoUpload();
+  });
+}
+
+// -------------------------------------------------------------
+// CONNECT / CLAIM PROOF PHOTO PROCESSING
+// -------------------------------------------------------------
+function processConnectProofImage(file) {
+  if (!file || !file.type.startsWith('image/')) {
+    notify('Please select a valid image file (JPG, PNG, WebP).');
+    return;
+  }
+  if (file.size > 8 * 1024 * 1024) {
+    notify('Image file is too large (maximum 8MB).');
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = (event) => {
+    const img = new Image();
+    img.onload = () => {
+      const maxDim = 1000;
+      let { width, height } = img;
+      if (width > maxDim || height > maxDim) {
+        if (width > height) {
+          height = Math.round((height * maxDim) / width);
+          width = maxDim;
+        } else {
+          width = Math.round((width * maxDim) / height);
+          height = maxDim;
+        }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, width, height);
+
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
+      currentConnectProofImageBase64 = dataUrl;
+      if (connectPhotoPreviewImg) connectPhotoPreviewImg.src = dataUrl;
+      if (connectDropzonePrompt) connectDropzonePrompt.classList.add('hidden');
+      if (connectPhotoPreviewBox) connectPhotoPreviewBox.classList.remove('hidden');
+    };
+    img.src = event.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function clearConnectProofPhoto() {
+  currentConnectProofImageBase64 = null;
+  if (connectPhotoInput) connectPhotoInput.value = '';
+  if (connectPhotoPreviewImg) connectPhotoPreviewImg.src = '';
+  if (connectDropzonePrompt) connectDropzonePrompt.classList.remove('hidden');
+  if (connectPhotoPreviewBox) connectPhotoPreviewBox.classList.add('hidden');
+}
+
+if (connectPhotoDropzone && connectPhotoInput) {
+  connectPhotoDropzone.addEventListener('click', (e) => {
+    if (e.target.id === 'connectRemovePhotoBtn' || e.target.closest('#connectRemovePhotoBtn')) return;
+    connectPhotoInput.click();
+  });
+  connectPhotoInput.addEventListener('click', (e) => e.stopPropagation());
+  connectPhotoInput.addEventListener('change', (e) => {
+    if (e.target.files && e.target.files[0]) processConnectProofImage(e.target.files[0]);
+  });
+
+  ['dragenter', 'dragover'].forEach((ev) => {
+    connectPhotoDropzone.addEventListener(ev, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      connectPhotoDropzone.classList.add('dragover');
+    });
+  });
+  ['dragleave', 'drop'].forEach((ev) => {
+    connectPhotoDropzone.addEventListener(ev, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      connectPhotoDropzone.classList.remove('dragover');
+    });
+  });
+  connectPhotoDropzone.addEventListener('drop', (e) => {
+    const dt = e.dataTransfer;
+    if (dt.files && dt.files[0]) processConnectProofImage(dt.files[0]);
+  });
+}
+
+if (connectRemovePhotoBtn) {
+  connectRemovePhotoBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    clearConnectProofPhoto();
   });
 }
 
@@ -731,6 +830,12 @@ async function openConnections() {
           <div style="background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 10px; margin: 10px 0; font-size: 11px; line-height: 1.5;">
             <b>${incoming ? 'From' : 'To'}: ${escapeHtml(otherName)} (${escapeHtml(otherRole || 'Campus Member')}):</b><br/>
             ${escapeHtml(c.message).replace(/\n/g, '<br/>')}
+            ${c.proof_image ? `
+              <div style="margin-top: 10px; padding-top: 8px; border-top: 1px dashed #e2e8f0;">
+                <span style="font-weight: 800; color: var(--coral); font-size: 11px; display: block; margin-bottom: 6px;">📷 Photo Proof of Item Attached:</span>
+                <img src="${c.proof_image}" alt="Claim Proof Photo" style="max-height: 180px; max-width: 100%; border-radius: 8px; border: 1px solid var(--line); cursor: pointer; object-fit: contain; background: #faf9f6; display: block;" onclick="window.open('${c.proof_image}', '_blank')" title="Click to open full size photo" />
+              </div>
+            ` : ''}
           </div>
 
           ${
@@ -890,6 +995,8 @@ function openConnection(itemId) {
   if (!item) return;
 
   connectForm.itemId.value = itemId;
+  clearConnectProofPhoto();
+
   const proofPrompt = document.querySelector('#connectProofPrompt');
   if (item.proof_question && item.proof_question.trim()) {
     proofPrompt.classList.remove('hidden');
@@ -911,11 +1018,13 @@ if (connectForm) {
         body: JSON.stringify({
           item_id: Number(connectForm.itemId.value),
           message: connectForm.message.value,
+          image_data: currentConnectProofImageBase64,
         }),
       });
       connectDialog.close();
       connectForm.reset();
-      notify('Message sent! View replies in Messages & Notifications.');
+      clearConnectProofPhoto();
+      notify('Message sent with attached proof! View replies in Messages & Notifications.');
       openConnections();
     } catch (err) {
       notify(err.message);
