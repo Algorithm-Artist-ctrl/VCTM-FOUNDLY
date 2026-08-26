@@ -61,10 +61,11 @@ COLLEGE_DOMAINS = [d.strip().lower() for d in raw_domains.split(",") if d.strip(
 ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@vctm.in").lower()
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "Tarun@759977")
 
-# Rate limiting
+# Rate limiting & Duplicate submission guards
 RATE_LIMITS = defaultdict(list)
 MAX_REQUESTS_PER_WINDOW = 120
 RATE_WINDOW_SECONDS = 60
+RECENT_SUBMISSIONS = {}
 
 
 def check_rate_limit(ip_address: str) -> bool:
@@ -171,6 +172,12 @@ class SupabaseDB:
     def delete_session(self, token: str):
         try:
             self._request(f"app_sessions?token=eq.{token}", "DELETE")
+        except Exception:
+            pass
+
+    def delete_user_sessions(self, user_id: int):
+        try:
+            self._request(f"app_sessions?user_id=eq.{user_id}", "DELETE")
         except Exception:
             pass
 
@@ -347,7 +354,23 @@ def calculate_match_score(lost_item: dict, found_item: dict):
     return 0, []
 
 
+SMART_MATCHES_CACHE = None
+SMART_MATCHES_CACHE_TIME = 0.0
+CACHE_TTL_SECONDS = 5.0
+
+
+def invalidate_smart_matches_cache():
+    global SMART_MATCHES_CACHE, SMART_MATCHES_CACHE_TIME
+    SMART_MATCHES_CACHE = None
+    SMART_MATCHES_CACHE_TIME = 0.0
+
+
 def get_all_smart_matches():
+    global SMART_MATCHES_CACHE, SMART_MATCHES_CACHE_TIME
+    now = time.time()
+    if SMART_MATCHES_CACHE is not None and (now - SMART_MATCHES_CACHE_TIME) < CACHE_TTL_SECONDS:
+        return SMART_MATCHES_CACHE
+
     lost_items = db.get_items(item_type="Lost", status="Open")
     found_items = db.get_items(item_type="Found", status="Open")
 
@@ -367,6 +390,8 @@ def get_all_smart_matches():
                 })
 
     matches.sort(key=lambda x: x["score"], reverse=True)
+    SMART_MATCHES_CACHE = matches
+    SMART_MATCHES_CACHE_TIME = now
     return matches
 
 
@@ -646,10 +671,13 @@ class FoundlyHandler(SimpleHTTPRequestHandler):
                 self.send_json({"user": user_resp, "token": token}, 200, set_cookie=cookie)
                 return
 
-            # 3. User Logout
+            # 3. User Logout (Invalidates all active sessions for this user)
             if path == "/api/logout":
+                user = self.get_current_user()
                 token = self.get_session_token()
-                if token:
+                if user and user.get("id"):
+                    db.delete_user_sessions(user["id"])
+                elif token:
                     db.delete_session(token)
                 cookie = "foundly_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0"
                 self.send_json({"ok": True}, 200, set_cookie=cookie)
@@ -669,6 +697,8 @@ class FoundlyHandler(SimpleHTTPRequestHandler):
                     return
                 salt, digest = password_hash(new_pass)
                 db.update_password(user_record["id"], salt, digest)
+                # Invalidate existing sessions after password reset so user logs in fresh
+                db.delete_user_sessions(user_record["id"])
                 self.send_json({"ok": True, "message": "Password updated successfully. Please sign in."})
                 return
 
@@ -690,6 +720,14 @@ class FoundlyHandler(SimpleHTTPRequestHandler):
                 img = body.get("image_data")
                 proof = (body.get("proof_question") or "").strip()
 
+                # Duplicate submission prevention on backend (4s window)
+                sub_key = (user["id"], name.lower(), loc.lower(), t)
+                now = time.time()
+                if sub_key in RECENT_SUBMISSIONS and (now - RECENT_SUBMISSIONS[sub_key][0]) < 4.0:
+                    prev_id = RECENT_SUBMISSIONS[sub_key][1]
+                    self.send_json({"item": {"id": prev_id}}, 200)
+                    return
+
                 item_data = {
                     "name": name,
                     "category": cat,
@@ -706,6 +744,8 @@ class FoundlyHandler(SimpleHTTPRequestHandler):
                     "owner_role": user.get("campus_role") or "Student",
                 }
                 created = db.create_item(item_data)
+                invalidate_smart_matches_cache()
+                RECENT_SUBMISSIONS[sub_key] = (now, created["id"])
                 self.send_json({"item": {"id": created["id"]}}, 201)
                 return
 
@@ -728,6 +768,7 @@ class FoundlyHandler(SimpleHTTPRequestHandler):
                     self.send_error_json("Permission denied", 403)
                     return
                 db.update_item_status(item_id, new_status)
+                invalidate_smart_matches_cache()
                 self.send_json({"ok": True, "status": new_status})
                 return
 
@@ -903,6 +944,7 @@ class FoundlyHandler(SimpleHTTPRequestHandler):
                     self.send_error_json("Permission denied", 403)
                     return
                 db.delete_item(item_id)
+                invalidate_smart_matches_cache()
                 self.send_json({"ok": True})
                 return
             self.send_error_json("Route not found", 404)

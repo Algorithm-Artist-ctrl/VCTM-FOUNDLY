@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>VCTM Foundly — Verified Campus Lost & Found</title>
-    <link rel="stylesheet" href="styles.css?v=6.5.0" />
+    <link rel="stylesheet" href="styles.css?v=6.6.0" />
   </head>
   <body>
     <div class="ambient ambient-one"></div>
@@ -544,12 +544,13 @@
               <img id="photoPreviewImg" src="" alt="Item photo preview" />
               <button type="button" id="removePhotoBtn" class="btn-remove-photo" aria-label="Remove photo">✕ Remove Photo</button>
             </div>
-          </div>
         </div>
 
+        <div id="reportFormError" class="report-error hidden" style="margin: 12px 0 4px; font-size: 12px; color: #c4321d; font-weight: 700; background: #fde8e5; padding: 10px 14px; border-radius: 8px; border: 1px solid #fad2ce;"></div>
+
         <div class="modal-footer">
-          <button class="button button-secondary" value="cancel" formnovalidate>Cancel</button>
-          <button class="button button-primary" id="submitReport" value="default">Publish Report <span>→</span></button>
+          <button class="button button-secondary" id="cancelReportBtn" value="cancel" formnovalidate>Cancel</button>
+          <button class="button button-primary" id="submitReport" value="default" type="submit">Submit Lost Report <span>→</span></button>
         </div>
       </form>
     </dialog>
@@ -850,6 +851,6 @@
 
     <!-- Supabase Cloud Client SDK -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="app.js?v=6.5.0"></script>
+    <script src="app.js?v=6.6.0"></script>
   </body>
 </html>

@@ -69,6 +69,9 @@ const escapeHtml = (str) =>
     '"': '&quot;',
   }[c]));
 
+// Cross-Tab Broadcast Channel for Instant Session Sync
+const authChannel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('foundly_auth') : null;
+
 // Helper: API Fetcher with Dual Token/Cookie Auth
 const api = async (path, options = {}) => {
   const token = localStorage.getItem('foundly_token');
@@ -92,6 +95,11 @@ const api = async (path, options = {}) => {
     data = await response.json();
   } catch (err) {
     data = { error: `Server error (${response.status})` };
+  }
+
+  if (response.status === 401 && currentUser && path !== '/api/login' && path !== '/api/register') {
+    // Session invalidated on server
+    handleRemoteLogout();
   }
 
   if (!response.ok) {
@@ -151,7 +159,7 @@ const getItemIcon = (name = '', category = '', desc = '') => {
 };
 
 // -------------------------------------------------------------
-// PHOTO UPLOAD & RESIZE
+// PHOTO UPLOAD & RESIZE (Optimized for Fast Uploads)
 // -------------------------------------------------------------
 function processImageFile(file) {
   if (!file || !file.type.startsWith('image/')) {
@@ -167,7 +175,8 @@ function processImageFile(file) {
   reader.onload = (event) => {
     const img = new Image();
     img.onload = () => {
-      const maxDim = 1000;
+      // High-performance image scaling: 800px max dimension, quality 0.78
+      const maxDim = 800;
       let { width, height } = img;
       if (width > maxDim || height > maxDim) {
         if (width > height) {
@@ -184,11 +193,11 @@ function processImageFile(file) {
       const ctx = canvas.getContext('2d');
       ctx.drawImage(img, 0, 0, width, height);
 
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.78);
       currentUploadedImageBase64 = dataUrl;
-      photoPreviewImg.src = dataUrl;
-      dropzonePrompt.classList.add('hidden');
-      photoPreviewBox.classList.remove('hidden');
+      if (photoPreviewImg) photoPreviewImg.src = dataUrl;
+      if (dropzonePrompt) dropzonePrompt.classList.add('hidden');
+      if (photoPreviewBox) photoPreviewBox.classList.remove('hidden');
     };
     img.src = event.target.result;
   };
@@ -201,6 +210,11 @@ function clearPhotoUpload() {
   if (photoPreviewImg) photoPreviewImg.src = '';
   if (dropzonePrompt) dropzonePrompt.classList.remove('hidden');
   if (photoPreviewBox) photoPreviewBox.classList.add('hidden');
+  const errElem = document.querySelector('#reportFormError');
+  if (errElem) {
+    errElem.textContent = '';
+    errElem.classList.add('hidden');
+  }
 }
 
 if (photoDropzone && photoInput) {
@@ -257,7 +271,7 @@ function processConnectProofImage(file) {
   reader.onload = (event) => {
     const img = new Image();
     img.onload = () => {
-      const maxDim = 1000;
+      const maxDim = 800;
       let { width, height } = img;
       if (width > maxDim || height > maxDim) {
         if (width > height) {
@@ -274,7 +288,7 @@ function processConnectProofImage(file) {
       const ctx = canvas.getContext('2d');
       ctx.drawImage(img, 0, 0, width, height);
 
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.78);
       currentConnectProofImageBase64 = dataUrl;
       if (connectPhotoPreviewImg) connectPhotoPreviewImg.src = dataUrl;
       if (connectDropzonePrompt) connectDropzonePrompt.classList.add('hidden');
@@ -1263,9 +1277,14 @@ async function handleSignOut(e) {
     e.preventDefault();
     e.stopPropagation();
   }
+  const token = localStorage.getItem('foundly_token');
+
+  // 1. Clear client storage & memory state immediately
   localStorage.removeItem('foundly_token');
   localStorage.removeItem('foundly_user');
   currentUser = null;
+  connections = [];
+
   document.querySelectorAll('dialog').forEach((d) => {
     try { d.close(); } catch (_) {}
   });
@@ -1273,10 +1292,50 @@ async function handleSignOut(e) {
   syncUser();
   notify('You have been signed out.');
 
+  // 2. Broadcast generic logout to other open tabs
+  if (authChannel) {
+    try { authChannel.postMessage({ type: 'foundly_logout' }); } catch (_) {}
+  }
   try {
-    await fetch('/api/logout', { method: 'POST', credentials: 'include' });
+    localStorage.setItem('foundly_logout_event', Date.now().toString());
+  } catch (_) {}
+
+  // 3. Server-side session invalidation
+  try {
+    const headers = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    await fetch('/api/logout', { method: 'POST', headers, credentials: 'include' });
   } catch (_) {}
 }
+
+function handleRemoteLogout() {
+  if (currentUser || localStorage.getItem('foundly_token')) {
+    localStorage.removeItem('foundly_token');
+    localStorage.removeItem('foundly_user');
+    currentUser = null;
+    connections = [];
+    document.querySelectorAll('dialog').forEach((d) => {
+      try { d.close(); } catch (_) {}
+    });
+    document.body.classList.remove('is-authenticated', 'modal-open');
+    syncUser();
+    notify('You have been signed out.');
+  }
+}
+
+if (authChannel) {
+  authChannel.onmessage = (event) => {
+    if (event.data?.type === 'foundly_logout' || event.data === 'foundly_logout') {
+      handleRemoteLogout();
+    }
+  };
+}
+
+window.addEventListener('storage', (e) => {
+  if (e.key === 'foundly_logout_event' || (e.key === 'foundly_token' && !e.newValue)) {
+    handleRemoteLogout();
+  }
+});
 
 document.querySelector('#profileButton')?.addEventListener('click', openUserProfile);
 document.querySelector('#closeUserProfile')?.addEventListener('click', () => userProfileDialog.close());
@@ -1403,11 +1462,16 @@ if (resetPasswordForm) {
 // -------------------------------------------------------------
 // 8. REPORT ITEM FORM
 // -------------------------------------------------------------
+let isSubmittingReport = false;
+
 function setType(type) {
   reportType = type;
   document.querySelectorAll('.type-choice').forEach((b) => b.classList.toggle('active', b.dataset.type === type));
   document.querySelector('#modalTitle').textContent = `Report a ${type.toLowerCase()} item`;
-  document.querySelector('#submitReport').innerHTML = `Publish ${type.toLowerCase()} report <span>→</span>`;
+  const submitBtn = document.querySelector('#submitReport');
+  if (submitBtn) {
+    submitBtn.innerHTML = `Submit ${type} Report <span>→</span>`;
+  }
 }
 
 function openReport(type) {
@@ -1418,6 +1482,16 @@ function openReport(type) {
   }
   setType(type);
   clearPhotoUpload();
+  const errElem = document.querySelector('#reportFormError');
+  if (errElem) {
+    errElem.textContent = '';
+    errElem.classList.add('hidden');
+  }
+  const submitBtn = document.querySelector('#submitReport');
+  if (submitBtn) {
+    submitBtn.disabled = false;
+    submitBtn.innerHTML = `Submit ${type} Report <span>→</span>`;
+  }
   const dateInput = reportForm.querySelector('input[name="date"]');
   if (dateInput && !dateInput.value) {
     dateInput.value = new Date().toISOString().split('T')[0];
@@ -1436,7 +1510,27 @@ if (reportForm) {
   reportForm.addEventListener('submit', async (e) => {
     if (e.submitter?.value === 'cancel') return;
     e.preventDefault();
+    if (isSubmittingReport) return;
+
     const d = new FormData(reportForm);
+    const submitBtn = document.querySelector('#submitReport');
+    const errElem = document.querySelector('#reportFormError');
+    if (errElem) {
+      errElem.textContent = '';
+      errElem.classList.add('hidden');
+    }
+
+    const originalBtnText = `Submit ${reportType} Report <span>→</span>`;
+    isSubmittingReport = true;
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = `⏳ Submitting report...`;
+    }
+    const formElements = Array.from(reportForm.elements);
+    formElements.forEach((el) => {
+      if (el !== submitBtn) el.disabled = true;
+    });
+
     try {
       await api('/api/items', {
         method: 'POST',
@@ -1451,14 +1545,43 @@ if (reportForm) {
           type: reportType,
         }),
       });
+
+      // SUCCESS FLOW:
+      // 1. Show clear success message
+      notify(`✓ Report submitted successfully! ${reportType === 'Lost' ? 'Lost item reported successfully.' : 'Found item reported successfully.'}`);
+      
+      // 2. Close report modal only AFTER successful response
       reportDialog.close();
+
+      // 3. Reset form and uploaded photo state
       reportForm.reset();
       clearPhotoUpload();
+
+      // 4. Refresh items, smart matches, dashboard counters, and my reports
       await loadItems();
       loadSmartMatches();
-      notify('Report live! We will notify you instantly if a match is found.');
+      if (myReportsDialog && myReportsDialog.open) {
+        loadMyReports();
+      }
+      syncUserMetrics();
     } catch (err) {
-      notify(err.message);
+      // ERROR FLOW: keep modal open, keep form inputs, display error
+      console.error('Report submission failed:', err);
+      const safeError = err.message || 'Could not submit the report. Please try again.';
+      if (errElem) {
+        errElem.textContent = `Could not submit the report. ${safeError}`;
+        errElem.classList.remove('hidden');
+      }
+      notify(`Could not submit the report. ${safeError}`);
+    } finally {
+      isSubmittingReport = false;
+      formElements.forEach((el) => {
+        el.disabled = false;
+      });
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = originalBtnText;
+      }
     }
   });
 }
@@ -1798,10 +1921,9 @@ document.querySelectorAll('dialog').forEach((dlg) => {
 // -------------------------------------------------------------
 // INITIALIZATION
 // -------------------------------------------------------------
-// Instant cached session recovery on refresh to prevent login screen flicker
 try {
   const cachedUserStr = localStorage.getItem('foundly_user');
-  if (cachedUserStr) {
+  if (cachedUserStr && localStorage.getItem('foundly_token')) {
     currentUser = JSON.parse(cachedUserStr);
     syncUser();
   }
@@ -1829,6 +1951,15 @@ try {
     checkPendingUpdates();
 
     setInterval(async () => {
+      // Background session validation
+      try {
+        const s = await api('/api/session');
+        if (!s || !s.user) {
+          if (currentUser) {
+            handleRemoteLogout();
+          }
+        }
+      } catch (_) {}
       await Promise.all([
         loadItems(),
         loadSmartMatches(),
