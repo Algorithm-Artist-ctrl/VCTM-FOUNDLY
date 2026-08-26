@@ -779,6 +779,12 @@ h1 em { color: var(--coral); }
   border-bottom: 1px solid #f1f5f9;
   padding-bottom: 12px;
 }
+.match-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
 .match-ai-badge {
   font: 800 11px 'DM Mono', monospace;
   background: linear-gradient(135deg, #eff6ff, #f0fdf4);
@@ -790,13 +796,51 @@ h1 em { color: var(--coral); }
   align-items: center;
   gap: 5px;
 }
-.match-score-badge {
+.match-strength-pill {
+  font: 800 11px system-ui, sans-serif;
+  padding: 3px 9px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.match-strength-pill.strength-strong {
   background: #ecfdf5;
   color: #047857;
   border: 1px solid #a7f3d0;
-  font: 800 13px 'DM Mono', monospace;
-  padding: 4px 12px;
-  border-radius: 20px;
+}
+.match-strength-pill.strength-possible {
+  background: #fffbeb;
+  color: #b45309;
+  border: 1px solid #fde68a;
+}
+.match-strength-pill.strength-low {
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+}
+.match-score-badge-large {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1;
+}
+.match-score-badge-large b {
+  font-size: 24px;
+  font-weight: 900;
+  font-family: 'DM Mono', monospace;
+  letter-spacing: -0.5px;
+}
+.match-score-badge-large.strength-strong b { color: #047857; }
+.match-score-badge-large.strength-possible b { color: #b45309; }
+.match-score-badge-large.strength-low b { color: #475569; }
+.match-score-badge-large small {
+  font-size: 9px;
+  font-weight: 800;
+  color: var(--muted);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  margin-top: 2px;
 }
 .match-items-comparison {
   display: grid;
@@ -859,9 +903,25 @@ h1 em { color: var(--coral); }
 }
 .match-meter-fill {
   height: 100%;
-  background: linear-gradient(90deg, #10b981, #059669);
   border-radius: 999px;
-  transition: width 0.4s ease;
+  transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.match-meter-fill.fill-strong {
+  background: linear-gradient(90deg, #10b981, #059669);
+}
+.match-meter-fill.fill-possible {
+  background: linear-gradient(90deg, #f59e0b, #d97706);
+}
+.match-meter-fill.fill-low {
+  background: linear-gradient(90deg, #94a3b8, #64748b);
+}
+.match-confidence-pct {
+  font-size: 12px;
+  color: #1e293b;
+}
+.match-confidence-pct b {
+  font-family: 'DM Mono', monospace;
+  font-size: 13px;
 }
 .match-reasons-title {
   font-size: 11px;

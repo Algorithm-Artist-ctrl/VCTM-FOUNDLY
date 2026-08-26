@@ -585,12 +585,25 @@ async function loadSmartMatches() {
               const targetItem = isLostOwner ? f : l;
               const btnLabel = isLostOwner ? 'Connect & Reclaim 💬' : 'Notify Owner 💬';
 
+              const score = Number(m.match_score != null ? m.match_score : (m.score != null ? m.score : 0));
+              const strength = m.match_strength || (score >= 80 ? 'Strong Match' : score >= 65 ? 'Possible Match' : 'Low Confidence');
+              const reasons = m.match_reasons || m.reasons || [];
+              const strengthClass = score >= 80 ? 'strength-strong' : score >= 65 ? 'strength-possible' : 'strength-low';
+              const fillClass = score >= 80 ? 'fill-strong' : score >= 65 ? 'fill-possible' : 'fill-low';
+              const strengthEmoji = score >= 80 ? '⚡' : score >= 65 ? '🟡' : '🔍';
+
               return `
               <article class="match-pair-card">
                 <!-- Top Header -->
                 <div class="match-card-top-header">
-                  <span class="match-ai-badge">⚡ AI SMART MATCH</span>
-                  <span class="match-score-badge">${m.score}% MATCH</span>
+                  <div class="match-header-left">
+                    <span class="match-ai-badge">⚡ AI SMART MATCH</span>
+                    <span class="match-strength-pill ${strengthClass}">${strengthEmoji} ${escapeHtml(strength)}</span>
+                  </div>
+                  <div class="match-score-badge-large ${strengthClass}">
+                    <b>${score}%</b>
+                    <small>MATCH</small>
+                  </div>
                 </div>
 
                 <!-- Side-by-side Items Comparison -->
@@ -625,15 +638,15 @@ async function loadSmartMatches() {
                 <div class="match-meter-box">
                   <div class="match-meter-header">
                     <span>MATCH CONFIDENCE</span>
-                    <span>${m.score}%</span>
+                    <span class="match-confidence-pct"><b>${score}%</b> · ${escapeHtml(strength)}</span>
                   </div>
                   <div class="match-meter-bar">
-                    <div class="match-meter-fill" style="width: ${m.score}%;"></div>
+                    <div class="match-meter-fill ${fillClass}" style="width: ${score}%;"></div>
                   </div>
 
-                  <div class="match-reasons-title">Why We Think It Matches</div>
+                  <div class="match-reasons-title">Why This Matched</div>
                   <div class="match-reasons-grid">
-                    ${(m.reasons || []).map((r) => `<span class="match-reason-pill">✓ ${escapeHtml(r)}</span>`).join('')}
+                    ${reasons.map((r) => `<span class="match-reason-pill">✓ ${escapeHtml(r)}</span>`).join('')}
                   </div>
 
                   ${m.ai_visual_description ? `
@@ -676,6 +689,13 @@ function openMatchDetail(matchIdx) {
   const targetItem = isLostOwner ? f : l;
   const btnLabel = isLostOwner ? 'Connect & Reclaim Item 💬' : 'Contact Lost Owner 💬';
 
+  const score = Number(m.match_score != null ? m.match_score : (m.score != null ? m.score : 0));
+  const strength = m.match_strength || (score >= 80 ? 'Strong Match' : score >= 65 ? 'Possible Match' : 'Low Confidence');
+  const reasons = m.match_reasons || m.reasons || [];
+  const strengthClass = score >= 80 ? 'strength-strong' : score >= 65 ? 'strength-possible' : 'strength-low';
+  const fillClass = score >= 80 ? 'fill-strong' : score >= 65 ? 'fill-possible' : 'fill-low';
+  const strengthEmoji = score >= 80 ? '⚡' : score >= 65 ? '🟡' : '🔍';
+
   const lIcon = getItemIcon(l.name, l.category, l.description);
   const fIcon = getItemIcon(f.name, f.category, f.description);
   const lImg = l.image_data ? `<img src="${l.image_data}" alt="${escapeHtml(l.name)}" style="max-height:160px; max-width:100%; border-radius:8px; object-fit:contain;" />` : `<div style="font-size:48px; text-align:center; padding:20px 0;">${lIcon}</div>`;
@@ -709,14 +729,14 @@ function openMatchDetail(matchIdx) {
       <div class="match-meter-box" style="margin-bottom:16px;">
         <div class="match-meter-header">
           <span>AI MATCH CONFIDENCE</span>
-          <span class="match-score-badge">${m.score}% MATCH</span>
+          <span class="match-confidence-pct"><b>${score}%</b> · ${escapeHtml(strength)}</span>
         </div>
         <div class="match-meter-bar">
-          <div class="match-meter-fill" style="width: ${m.score}%;"></div>
+          <div class="match-meter-fill ${fillClass}" style="width: ${score}%;"></div>
         </div>
         <div class="match-reasons-title">Verified Match Reasons</div>
         <div class="match-reasons-grid">
-          ${(m.reasons || []).map((r) => `<span class="match-reason-pill">✓ ${escapeHtml(r)}</span>`).join('')}
+          ${reasons.map((r) => `<span class="match-reason-pill">✓ ${escapeHtml(r)}</span>`).join('')}
         </div>
         ${m.ai_visual_description ? `
           <div class="match-ai-desc-box" style="margin-top:10px;">

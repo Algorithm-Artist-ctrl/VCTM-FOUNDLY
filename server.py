@@ -22,7 +22,8 @@ from collections import defaultdict
 from datetime import datetime
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+import difflib
+from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import parse_qs, quote, urlparse
 import urllib.request
 import urllib.error
@@ -439,6 +440,113 @@ def analyze_image_with_gemini(image_data_uri: str) -> Optional[Dict]:
     return None
 
 
+# ==============================================================
+# PROFESSIONAL HYBRID SMART MATCH SCORING ENGINE (0-100)
+# ==============================================================
+WEIGHT_CATEGORY = 15
+WEIGHT_ITEM_TITLE = 20
+WEIGHT_DESCRIPTION = 20
+WEIGHT_COLOR = 10
+WEIGHT_BRAND = 10
+WEIGHT_VISUAL_FEATURES = 15
+WEIGHT_LOCATION = 5
+WEIGHT_DATE_PROXIMITY = 5
+
+THRESHOLD_STRONG = 80
+THRESHOLD_POSSIBLE = 65
+THRESHOLD_MIN_DISPLAY = 50
+
+STOP_WORDS = {
+    "a", "an", "the", "in", "on", "at", "by", "for", "with", "about", "against",
+    "between", "into", "through", "during", "before", "after", "above", "below",
+    "to", "from", "up", "down", "of", "off", "over", "under", "again", "further",
+    "then", "once", "here", "there", "when", "where", "why", "how", "all", "any",
+    "both", "each", "few", "more", "most", "other", "some", "such", "no", "nor",
+    "not", "only", "own", "same", "so", "than", "too", "very", "can", "will",
+    "just", "should", "now", "lost", "found", "item", "please", "help", "contact",
+    "i", "my", "me", "we", "our", "you", "your", "he", "she", "it", "they", "this", "that"
+}
+
+CATEGORY_GROUPS = [
+    {"electronics", "gadgets", "phone", "phones", "laptop", "laptops", "earbuds", "headphones", "charger", "chargers"},
+    {"accessories", "keys", "key", "wallet", "wallets", "purse", "purses", "bag", "bags", "backpack", "backpacks", "card", "cards", "id", "bottle", "bottles"},
+    {"documents", "cards", "id card", "book", "books", "notebook", "notebooks", "stationery"},
+    {"clothing", "apparel", "jacket", "hoodie", "cap", "watch", "glasses", "spectacles"}
+]
+
+KNOWN_BRANDS = [
+    "apple", "hp", "dell", "lenovo", "asus", "acer", "samsung", "sony", "boat",
+    "noise", "boult", "fireboltt", "fastrack", "titan", "casio", "realme", "redmi",
+    "xiaomi", "oneplus", "oppo", "vivo", "nike", "adidas", "puma", "wildcraft",
+    "skybags", "american tourister", "safari", "jbl", "bose", "logitech", "zebronics",
+    "activa", "honda", "hero", "bajaj", "tvs", "yamaha", "suzuki", "royal enfield"
+]
+
+KNOWN_COLORS = [
+    "black", "white", "blue", "navy", "red", "maroon", "green", "olive", "yellow",
+    "orange", "pink", "purple", "violet", "brown", "grey", "gray", "silver", "gold",
+    "beige", "cream", "transparent"
+]
+
+
+def clean_tokens(text: str) -> List[str]:
+    if not text:
+        return []
+    words = re.findall(r"[a-z0-9]+", text.lower())
+    return [w for w in words if len(w) > 1 and w not in STOP_WORDS]
+
+
+def token_similarity(text1: str, text2: str) -> float:
+    t1 = set(clean_tokens(text1))
+    t2 = set(clean_tokens(text2))
+    if not t1 or not t2:
+        return 0.0
+    intersection = t1.intersection(t2)
+    union = t1.union(t2)
+    jaccard = len(intersection) / len(union) if union else 0.0
+    containment = len(intersection) / min(len(t1), len(t2)) if min(len(t1), len(t2)) > 0 else 0.0
+    seq_ratio = difflib.SequenceMatcher(None, text1.lower().strip(), text2.lower().strip()).ratio()
+    sim = max(jaccard, (0.5 * containment + 0.3 * jaccard + 0.2 * seq_ratio))
+    return min(1.0, sim)
+
+
+def are_categories_related(cat1: str, cat2: str) -> bool:
+    if not cat1 or not cat2:
+        return False
+    c1 = cat1.lower().strip()
+    c2 = cat2.lower().strip()
+    if c1 == c2:
+        return True
+    for group in CATEGORY_GROUPS:
+        if any(g in c1 for g in group) and any(g in c2 for g in group):
+            return True
+    return False
+
+
+def extract_color(text: str, ai_analysis: Optional[dict] = None) -> Optional[str]:
+    if ai_analysis and ai_analysis.get("primary_color"):
+        c = ai_analysis["primary_color"].strip().lower()
+        if c in KNOWN_COLORS:
+            return c
+    tokens = clean_tokens(text)
+    for t in tokens:
+        if t in KNOWN_COLORS:
+            return t
+    return None
+
+
+def extract_brand(text: str, ai_analysis: Optional[dict] = None) -> Optional[str]:
+    if ai_analysis and ai_analysis.get("brand"):
+        b = ai_analysis["brand"].strip().lower()
+        if b and b != "unknown" and b != "none":
+            return b
+    t_lower = text.lower()
+    for b in KNOWN_BRANDS:
+        if re.search(r"\b" + re.escape(b) + r"\b", t_lower):
+            return b
+    return None
+
+
 def get_item_ai_analysis(item: dict) -> Optional[Dict]:
     """Retrieves AI analysis for an item from in-memory cache or item record."""
     item_id = item.get("id")
@@ -460,121 +568,183 @@ def get_item_ai_analysis(item: dict) -> Optional[Dict]:
     return None
 
 
-def calculate_match_score(lost_item: dict, found_item: dict):
+def calculate_match_score(lost_item: dict, found_item: dict) -> Tuple[int, str, List[str], Optional[str]]:
     """
-    Hybrid Smart Match Algorithm combining structured DB signals with Gemini AI visual features.
-    Computes a deterministic, traceable confidence score (0-98%) with factual match explanations.
+    Professional Hybrid Smart Match Algorithm (0-100%).
+    Combines structured DB signals with Gemini AI visual observations.
+    Produces an explainable numeric match_score, match_strength, and factual reasons.
     """
-    score = 0
-    matched_reasons = []
+    reasons = []
 
-    lost_ai = get_item_ai_analysis(lost_item)
+    lost_name = (lost_item.get("name") or "").strip()
+    lost_desc = (lost_item.get("description") or "").strip()
+    lost_loc = (lost_item.get("location") or "").strip()
+    lost_cat = (lost_item.get("category") or "").strip()
+    lost_date_str = lost_item.get("date") or lost_item.get("item_date") or ""
+
+    found_name = (found_item.get("name") or "").strip()
+    found_desc = (found_item.get("description") or "").strip()
+    found_loc = (found_item.get("location") or "").strip()
+    found_cat = (found_item.get("category") or "").strip()
+    found_date_str = found_item.get("date") or found_item.get("item_date") or ""
+
     found_ai = get_item_ai_analysis(found_item)
 
-    lost_name = (lost_item.get("name") or "").lower()
-    lost_desc = (lost_item.get("description") or "").lower()
-    found_name = (found_item.get("name") or "").lower()
-    found_desc = (found_item.get("description") or "").lower()
-    lost_combined_text = f"{lost_name} {lost_desc}"
-    found_combined_text = f"{found_name} {found_desc}"
-
-    # 1. Category Matching (+25 points)
-    lost_cat = lost_item.get("category")
-    found_cat = found_item.get("category")
-    if lost_cat and found_cat and lost_cat == found_cat and lost_cat != "Other":
-        score += 25
-        matched_reasons.append(f"Same category: {lost_cat}")
+    # 1. CATEGORY MATCHING (Max 15 pts)
+    cat_score = 0.0
+    if lost_cat and found_cat and lost_cat.lower() == found_cat.lower() and lost_cat != "Other":
+        cat_score = WEIGHT_CATEGORY
+        reasons.append(f"Same category: {lost_cat}")
     elif found_ai and found_ai.get("category") and lost_cat and found_ai["category"].lower() == lost_cat.lower():
-        score += 20
-        matched_reasons.append(f"AI verified category: {lost_cat}")
+        cat_score = WEIGHT_CATEGORY * 0.9
+        reasons.append(f"AI verified category: {lost_cat}")
+    elif are_categories_related(lost_cat, found_cat):
+        cat_score = WEIGHT_CATEGORY * 0.7
+        reasons.append(f"Related category: {lost_cat} / {found_cat}")
+    elif lost_cat == "Other" or found_cat == "Other":
+        cat_score = WEIGHT_CATEGORY * 0.4
 
-    # 2. Brand Matching (+25 points)
-    brand_found = False
-    if found_ai and found_ai.get("brand"):
-        f_brand = found_ai["brand"].strip()
-        if f_brand and len(f_brand) >= 2:
-            if re.search(r"\b" + re.escape(f_brand.lower()) + r"\b", lost_combined_text):
-                score += 25
-                matched_reasons.append(f"Same brand: {f_brand}")
-                brand_found = True
+    # 2. ITEM TITLE / TYPE SIMILARITY (Max 20 pts)
+    title_sim = token_similarity(lost_name, found_name)
+    title_score = title_sim * WEIGHT_ITEM_TITLE
+    lost_title_tokens = set(clean_tokens(lost_name))
+    found_title_tokens = set(clean_tokens(found_name))
+    overlap_title = lost_title_tokens.intersection(found_title_tokens)
+    if title_score >= 7 or overlap_title:
+        words_str = ", ".join(sorted(overlap_title)[:3]) if overlap_title else "Keywords match"
+        reasons.append(f"Item title similarity: {words_str}")
 
-    if not brand_found:
-        for b in KNOWN_BRANDS:
-            if re.search(r"\b" + re.escape(b) + r"\b", lost_combined_text) and re.search(r"\b" + re.escape(b) + r"\b", found_combined_text):
-                score += 25
-                matched_reasons.append(f"Same brand: {b.upper() if len(b) <= 4 else b.title()}")
-                break
-
-    # 3. Item Type & Title Keywords Matching (+25 points)
-    lost_title_words = extract_keywords(lost_item.get("name") or "")
-    found_title_words = extract_keywords(found_item.get("name") or "")
-    title_overlap = lost_title_words.intersection(found_title_words)
-    if title_overlap:
-        score += min(25, len(title_overlap) * 12)
-        matched_reasons.append(f"Title keywords: {', '.join(sorted(title_overlap))}")
-
+    # Check AI item type
     if found_ai and found_ai.get("item_type"):
-        f_type = found_ai["item_type"].strip()
-        if f_type and f_type.lower() in lost_combined_text:
-            score += 15
-            matched_reasons.append(f"Item type: {f_type}")
+        ai_type = found_ai["item_type"].lower()
+        if ai_type in lost_name.lower() or ai_type in lost_desc.lower():
+            title_score = min(WEIGHT_ITEM_TITLE, title_score + 4.0)
+            if f"Item type: {found_ai['item_type']}" not in reasons:
+                reasons.append(f"Item type: {found_ai['item_type']}")
 
-    # 4. Color Matching (+15 points)
-    color_found = False
-    if found_ai and found_ai.get("primary_color"):
-        p_color = found_ai["primary_color"].strip().lower()
-        if p_color and p_color in lost_combined_text:
-            score += 15
-            matched_reasons.append(f"Matching color: {found_ai['primary_color']}")
-            color_found = True
+    # 3. DESCRIPTION SIMILARITY (Max 20 pts)
+    desc_score = 0.0
+    if lost_desc and found_desc:
+        desc_sim = token_similarity(lost_desc, found_desc)
+        desc_score = desc_sim * WEIGHT_DESCRIPTION
+        if desc_score >= 5.0:
+            reasons.append("Similar description details")
+    elif not lost_desc and not found_desc:
+        desc_score = title_sim * (WEIGHT_DESCRIPTION * 0.5)
+    else:
+        cross_sim = token_similarity(lost_desc or lost_name, found_desc or found_name)
+        desc_score = cross_sim * (WEIGHT_DESCRIPTION * 0.6)
 
-    if not color_found:
-        for c in KNOWN_COLORS:
-            if re.search(r"\b" + re.escape(c) + r"\b", lost_combined_text) and re.search(r"\b" + re.escape(c) + r"\b", found_combined_text):
-                score += 15
-                matched_reasons.append(f"Matching color: {c.title()}")
-                break
+    # 4. COLOR SIMILARITY (Max 10 pts)
+    lost_color = extract_color(f"{lost_name} {lost_desc}")
+    found_color = extract_color(f"{found_name} {found_desc}", found_ai)
+    color_score = 0.0
+    if lost_color and found_color:
+        if lost_color == found_color:
+            color_score = WEIGHT_COLOR
+            reasons.append(f"Matching color: {lost_color.title()}")
+        else:
+            color_score = 0.0
+    elif not lost_color and not found_color:
+        color_score = WEIGHT_COLOR * 0.4
+    else:
+        color_score = WEIGHT_COLOR * 0.5
 
-    # 5. Location Overlap (+20 points)
-    lost_loc_words = extract_keywords(lost_item.get("location") or "")
-    found_loc_words = extract_keywords(found_item.get("location") or "")
-    loc_overlap = lost_loc_words.intersection(found_loc_words)
-    if loc_overlap:
-        score += min(20, len(loc_overlap) * 10)
-        matched_reasons.append(f"Same campus location: {', '.join(sorted(loc_overlap)).title()}")
+    # 5. BRAND SIMILARITY (Max 10 pts)
+    lost_brand = extract_brand(f"{lost_name} {lost_desc}")
+    found_brand = extract_brand(f"{found_name} {found_desc}", found_ai)
+    brand_score = 0.0
+    if lost_brand and found_brand:
+        if lost_brand == found_brand:
+            brand_score = WEIGHT_BRAND
+            reasons.append(f"Same brand: {lost_brand.upper() if len(lost_brand) <= 4 else lost_brand.title()}")
+        else:
+            brand_score = 0.0
+    elif not lost_brand and not found_brand:
+        brand_score = WEIGHT_BRAND * 0.4
+    else:
+        brand_score = WEIGHT_BRAND * 0.5
 
-    # 6. AI Visual Features Overlap (+15 points)
+    # 6. GEMINI VISUAL FEATURES (Max 15 pts)
+    visual_score = 0.0
     if found_ai and found_ai.get("features"):
-        matched_feat_list = []
+        combined_lost = f"{lost_name} {lost_desc}".lower()
+        matched_feats = []
         for feat in found_ai["features"]:
-            feat_words = extract_keywords(feat)
-            if feat_words and any(w in lost_combined_text for w in feat_words):
-                matched_feat_list.append(feat)
-        if matched_feat_list:
-            score += min(15, len(matched_feat_list) * 8)
-            matched_reasons.append(f"Visual features: {', '.join(matched_feat_list[:2])}")
+            feat_tokens = clean_tokens(feat)
+            if feat_tokens and any(ft in combined_lost for ft in feat_tokens):
+                matched_feats.append(feat)
+        if matched_feats:
+            visual_score = min(WEIGHT_VISUAL_FEATURES, len(matched_feats) * 7.5)
+            reasons.append(f"Visual features: {', '.join(matched_feats[:2])}")
+        else:
+            visual_score = WEIGHT_VISUAL_FEATURES * 0.4
+    else:
+        visual_score = (title_sim * 0.6 + (desc_score / WEIGHT_DESCRIPTION if WEIGHT_DESCRIPTION else 0) * 0.4) * WEIGHT_VISUAL_FEATURES
 
-    # 7. Description Details (+10 points)
-    lost_desc_words = extract_keywords(lost_desc)
-    found_desc_words = extract_keywords(found_desc)
-    desc_overlap = lost_desc_words.intersection(found_desc_words)
-    if desc_overlap:
-        score += min(10, len(desc_overlap) * 5)
-        matched_reasons.append("Similar description details")
+    # 7. LOCATION SIMILARITY (Max 5 pts)
+    loc_score = 0.0
+    if lost_loc and found_loc:
+        loc_sim = token_similarity(lost_loc, found_loc)
+        loc_score = loc_sim * WEIGHT_LOCATION
+        lost_loc_tokens = set(clean_tokens(lost_loc))
+        found_loc_tokens = set(clean_tokens(found_loc))
+        loc_overlap = lost_loc_tokens.intersection(found_loc_tokens)
+        if loc_overlap or loc_score >= 2.5:
+            loc_names = ", ".join(sorted(loc_overlap)).title() if loc_overlap else found_loc
+            reasons.append(f"Same campus location: {loc_names}")
 
-    # 8. Date Proximity (+5 points)
-    lost_date = lost_item.get("date") or lost_item.get("item_date")
-    found_date = found_item.get("date") or found_item.get("item_date")
-    if lost_date and found_date and lost_date == found_date:
-        score += 5
+    # 8. DATE PROXIMITY (Max 5 pts)
+    date_score = WEIGHT_DATE_PROXIMITY * 0.4
+    if lost_date_str and found_date_str:
+        try:
+            d1 = datetime.strptime(lost_date_str[:10], "%Y-%m-%d")
+            d2 = datetime.strptime(found_date_str[:10], "%Y-%m-%d")
+            diff_days = abs((d1 - d2).days)
+            if diff_days == 0:
+                date_score = WEIGHT_DATE_PROXIMITY
+                reasons.append("Reported on same day")
+            elif diff_days <= 2:
+                date_score = WEIGHT_DATE_PROXIMITY * 0.8
+                reasons.append(f"Within {diff_days} day{'s' if diff_days > 1 else ''}")
+            elif diff_days <= 7:
+                date_score = WEIGHT_DATE_PROXIMITY * 0.6
+            elif diff_days <= 14:
+                date_score = WEIGHT_DATE_PROXIMITY * 0.4
+            else:
+                date_score = 1.0
+        except Exception:
+            pass
 
-    # Threshold Check & Confidence Score Calculation
-    if score >= 35:
-        confidence = min(98, 45 + int(score * 0.65))
-        ai_summary = found_ai.get("visual_description") if found_ai else None
-        return confidence, matched_reasons, ai_summary
+    # TOTAL RAW SCORE
+    raw_total = (
+        cat_score
+        + title_score
+        + desc_score
+        + color_score
+        + brand_score
+        + visual_score
+        + loc_score
+        + date_score
+    )
 
-    return 0, [], None
+    # Hard mismatch guard: If titles have 0 similarity and categories are completely unrelated
+    if title_sim < 0.1 and not overlap_title and not are_categories_related(lost_cat, found_cat):
+        raw_total = min(raw_total, 25.0)
+
+    final_score = int(round(max(0.0, min(100.0, raw_total))))
+
+    if final_score >= THRESHOLD_STRONG:
+        strength = "Strong Match"
+    elif final_score >= THRESHOLD_POSSIBLE:
+        strength = "Possible Match"
+    elif final_score >= THRESHOLD_MIN_DISPLAY:
+        strength = "Low Confidence"
+    else:
+        strength = "Insufficient Data"
+
+    ai_desc = found_ai.get("visual_description") if found_ai else None
+    return final_score, strength, reasons, ai_desc
 
 
 SMART_MATCHES_CACHE = None
@@ -605,7 +775,9 @@ def sync_match_connection(match: dict):
             "select": "id"
         })
         if not existing:
-            reasons_str = ", ".join(match.get("reasons", [])[:3])
+            reasons_str = ", ".join(match.get("match_reasons", match.get("reasons", []))[:3])
+            score_val = match.get("match_score", match.get("score", 0))
+            strength_val = match.get("match_strength", "Strong Match")
             conn_payload = {
                 "item_id": f["id"],
                 "sender_id": found_owner_id,
@@ -618,7 +790,7 @@ def sync_match_connection(match: dict):
                 "recipient_email": l.get("owner_email") or "",
                 "recipient_role": l.get("owner_role") or "Student",
                 "recipient_phone": l.get("owner_phone"),
-                "message": f"⚡ AI SMART MATCH ({match['score']}% Match): Found item '{f.get('name')}' matches your lost report '{l.get('name')}'. Verified signals: {reasons_str}.",
+                "message": f"⚡ AI SMART MATCH ({score_val}% — {strength_val}): Found item '{f.get('name')}' matches your lost report '{l.get('name')}'. Verified signals: {reasons_str}.",
                 "status": "Matched",
             }
             db.create_connection(conn_payload)
@@ -646,11 +818,15 @@ def get_all_smart_matches():
             if pair_key in seen_pairs:
                 continue
 
-            score, reasons, ai_summary = calculate_match_score(l, f)
-            if score >= 55:
+            score, strength, reasons, ai_summary = calculate_match_score(l, f)
+            if score >= THRESHOLD_MIN_DISPLAY:
                 seen_pairs.add(pair_key)
                 match_obj = {
+                    "id": f"match-{l['id']}-{f['id']}",
+                    "match_score": score,
                     "score": score,
+                    "match_strength": strength,
+                    "match_reasons": reasons,
                     "reasons": reasons,
                     "ai_visual_description": ai_summary,
                     "lost_item": l,
@@ -659,7 +835,7 @@ def get_all_smart_matches():
                 matches.append(match_obj)
                 sync_match_connection(match_obj)
 
-    matches.sort(key=lambda x: x["score"], reverse=True)
+    matches.sort(key=lambda x: x["match_score"], reverse=True)
     SMART_MATCHES_CACHE = matches
     SMART_MATCHES_CACHE_TIME = now
     return matches
