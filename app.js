@@ -530,12 +530,21 @@ async function loadSmartMatches() {
     currentMatchesList = relevantMatches;
 
     const badge = document.querySelector('#navMatchBadge');
+    const mobileBadge = document.querySelector('#mobileMatchBadge');
     if (badge) {
       if (relevantMatches.length > 0) {
         badge.textContent = relevantMatches.length;
         badge.classList.remove('hidden');
       } else {
         badge.classList.add('hidden');
+      }
+    }
+    if (mobileBadge) {
+      if (relevantMatches.length > 0) {
+        mobileBadge.textContent = relevantMatches.length;
+        mobileBadge.classList.remove('hidden');
+      } else {
+        mobileBadge.classList.add('hidden');
       }
     }
 
@@ -1507,6 +1516,14 @@ function syncUser() {
     if (profileRoleEl) profileRoleEl.textContent = isAdmin ? '👑 Administrator' : (currentUser.campus_role || 'Student');
     if (avatarInitialsEl) avatarInitialsEl.textContent = isAdmin ? '👑' : initials;
 
+    // Mobile Drawer Profile Card
+    const mobileUserNameEl = document.querySelector('#mobileUserName');
+    const mobileUserRoleEl = document.querySelector('#mobileUserRole');
+    const mobileAvatarInitialsEl = document.querySelector('#mobileAvatarInitials');
+    if (mobileUserNameEl) mobileUserNameEl.textContent = currentUser.name;
+    if (mobileUserRoleEl) mobileUserRoleEl.textContent = isAdmin ? '👑 Administrator' : (currentUser.campus_role || 'Student');
+    if (mobileAvatarInitialsEl) mobileAvatarInitialsEl.textContent = isAdmin ? '👑' : initials;
+
     if (!isAdmin) {
       // User Dashboard Hero Info
       const heroInitialsEl = document.querySelector('#heroUserInitials');
@@ -1642,6 +1659,58 @@ document.querySelector('#profileMyReportsBtn')?.addEventListener('click', () => 
 document.querySelector('#profileConnectionsBtn')?.addEventListener('click', () => {
   userProfileDialog.close();
   openConnections();
+});
+
+// Mobile Navigation Drawer Control
+function closeMobileNav() {
+  document.body.classList.remove('mobile-nav-open');
+  const btn = document.querySelector('#mobileMenuBtn');
+  if (btn) btn.setAttribute('aria-expanded', 'false');
+}
+
+function openMobileNav() {
+  document.body.classList.add('mobile-nav-open');
+  const btn = document.querySelector('#mobileMenuBtn');
+  if (btn) btn.setAttribute('aria-expanded', 'true');
+}
+
+function toggleMobileNav() {
+  if (document.body.classList.contains('mobile-nav-open')) {
+    closeMobileNav();
+  } else {
+    openMobileNav();
+  }
+}
+
+document.querySelector('#mobileMenuBtn')?.addEventListener('click', toggleMobileNav);
+document.querySelector('#mobileNavClose')?.addEventListener('click', closeMobileNav);
+document.querySelector('#mobileNavOverlay')?.addEventListener('click', closeMobileNav);
+
+document.querySelector('#mobileOpenMyReports')?.addEventListener('click', () => {
+  closeMobileNav();
+  openMyReports();
+});
+document.querySelector('#mobileOpenConnections')?.addEventListener('click', () => {
+  closeMobileNav();
+  openConnections();
+});
+document.querySelector('#mobileOpenProfile')?.addEventListener('click', () => {
+  closeMobileNav();
+  openUserProfile();
+});
+document.querySelector('#mobileOpenAuth')?.addEventListener('click', () => {
+  closeMobileNav();
+  openAuthModal('login');
+});
+document.querySelector('#mobileSignOut')?.addEventListener('click', (e) => {
+  closeMobileNav();
+  handleSignOut(e);
+});
+
+document.querySelectorAll('.mobile-nav-item').forEach((item) => {
+  item.addEventListener('click', () => {
+    closeMobileNav();
+  });
 });
 
 // Auth Form Tabs & Modal Control
@@ -2191,11 +2260,16 @@ async function checkPendingUpdates() {
     const s = await api('/api/session');
     const dot = document.querySelector('#notifDot');
     const badge = document.querySelector('#navConnBadge');
+    const mobileBadge = document.querySelector('#mobileConnBadge');
     const count = s.pending_count || 0;
     if (dot) dot.classList.toggle('hidden', count === 0);
     if (badge) {
       badge.textContent = count;
       badge.classList.toggle('hidden', count === 0);
+    }
+    if (mobileBadge) {
+      mobileBadge.textContent = count;
+      mobileBadge.classList.toggle('hidden', count === 0);
     }
   } catch (_) {}
 }
