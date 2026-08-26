@@ -16,6 +16,7 @@ import os
 import re
 import secrets
 import sqlite3
+import threading
 import time
 from collections import defaultdict
 from datetime import datetime
@@ -60,6 +61,17 @@ raw_domains = os.environ.get("ALLOWED_DOMAINS", "vctm.in,vctm.edu")
 COLLEGE_DOMAINS = [d.strip().lower() for d in raw_domains.split(",") if d.strip()]
 ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@vctm.in").lower()
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "Tarun@759977")
+
+# Gemini AI Configuration (Server-Side Only - Read from Render Environment Variables)
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+gemini_client = None
+if GEMINI_API_KEY and GEMINI_API_KEY.strip():
+    try:
+        from google import genai
+        gemini_client = genai.Client(api_key=GEMINI_API_KEY.strip())
+        print("✓ Gemini GenAI Client initialized successfully.")
+    except Exception as e:
+        print(f"[Notice] Gemini SDK initialization warning: {e}")
 
 # Rate limiting & Duplicate submission guards
 RATE_LIMITS = defaultdict(list)
@@ -220,6 +232,12 @@ class SupabaseDB:
             pass
         self._request(f"items?id=eq.{item_id}", "DELETE")
 
+    def update_item_ai_analysis(self, item_id: int, ai_data: Dict):
+        try:
+            self._request(f"items?id=eq.{item_id}", "PATCH", data={"ai_analysis": json.dumps(ai_data)})
+        except Exception:
+            pass
+
     # Connections / Inbox
     def get_connections(self, user_id: int) -> List[Dict]:
         params = {
@@ -310,57 +328,255 @@ def initialise_database():
 
 
 # -------------------------------------------------------------
-# SMART MATCHING CORRELATION ALGORITHM
+# GEMINI AI VISION & HYBRID SMART MATCHING ENGINE
 # -------------------------------------------------------------
+AI_ANALYSIS_STORE: Dict[int, Dict] = {}
+
+KNOWN_BRANDS = [
+    "hp", "dell", "lenovo", "apple", "macbook", "samsung", "asus", "acer", "sony", "boat", "noise",
+    "casio", "fastrack", "titan", "fossil", "timex", "milton", "cello", "tupperware", "wildcraft",
+    "skybags", "american tourister", "nike", "adidas", "puma", "reebok", "under armour", "realme",
+    "redmi", "xiaomi", "oneplus", "oppo", "vivo", "motorola", "google", "pixel", "jbl", "boult",
+    "canon", "nikon", "logitech", "zebronics", "portronics", "parker", "classmate", "doms"
+]
+
+KNOWN_COLORS = [
+    "black", "white", "blue", "red", "grey", "gray", "silver", "brown", "green", "yellow",
+    "pink", "purple", "gold", "golden", "orange", "maroon", "navy", "cyan", "beige"
+]
+
+
 def extract_keywords(text: str):
     words = re.findall(r"\b[a-zA-Z0-9]{3,}\b", text.lower())
     stop_words = {"the", "and", "for", "with", "item", "lost", "found", "room", "near", "hall", "lab", "block", "floor"}
     return set(w for w in words if w not in stop_words)
 
 
+def analyze_image_with_gemini(image_data_uri: str) -> Optional[Dict]:
+    """
+    Analyzes an uploaded item photo using the official Google GenAI SDK (gemini-2.5-flash).
+    Extracts structured, objective visual details without guessing or hallucinating.
+    Gracefully catches all errors and returns None on any failure.
+    """
+    if not gemini_client or not image_data_uri or not isinstance(image_data_uri, str):
+        return None
+
+    if not image_data_uri.startswith("data:image/"):
+        return None
+
+    try:
+        from google.genai import types
+
+        header, base64_str = image_data_uri.split(",", 1)
+        mime_type = "image/jpeg"
+        if "image/png" in header:
+            mime_type = "image/png"
+        elif "image/webp" in header:
+            mime_type = "image/webp"
+        elif "image/gif" in header:
+            mime_type = "image/gif"
+
+        image_bytes = base64.b64decode(base64_str)
+
+        prompt = (
+            "You are an expert Lost & Found campus AI visual auditor. "
+            "Analyze this photo of an item. Identify only factual, observable visual characteristics. "
+            "Do NOT guess, assume, or hallucinate. If a detail (like brand or model) is not visible, return null or [].\n\n"
+            "Respond ONLY with a valid JSON object matching this schema:\n"
+            "{\n"
+            '  "category": "string (one of: Electronics, Accessories, Keys, Documents, Clothing, Books & stationery, Jewellery, Sports & fitness, Other)",\n'
+            '  "item_type": "string (specific name, e.g. Laptop Bag, Smartphone, Water Bottle, Backpack, Earbuds, Watch, Keys, ID Card, Jacket, etc.)",\n'
+            '  "primary_color": "string (e.g. Black, Silver, Blue, Red, Grey, White, Brown, etc., or null)",\n'
+            '  "secondary_colors": ["array of visible accent colors, or []"],\n'
+            '  "brand": "string (only if clearly visible brand/logo like HP, Dell, Apple, Samsung, Fastrack, Milton, Nike, etc., else null)",\n'
+            '  "model": "string (only if model name/number is printed and legible, else null)",\n'
+            '  "features": ["array of 2-5 distinctive visible features, logos, textures, patterns, zippers, or marks"],\n'
+            '  "visual_description": "concise 1-2 sentence factual summary of what the item looks like"\n'
+            "}"
+        )
+
+        response = gemini_client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=[
+                types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
+                prompt
+            ],
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                temperature=0.1
+            )
+        )
+
+        resp_text = (response.text or "").strip()
+        if resp_text.startswith("```json"):
+            resp_text = resp_text[7:]
+        if resp_text.startswith("```"):
+            resp_text = resp_text[3:]
+        if resp_text.endswith("```"):
+            resp_text = resp_text[:-3]
+
+        data = json.loads(resp_text.strip())
+        if isinstance(data, dict):
+            cleaned = {
+                "category": data.get("category"),
+                "item_type": data.get("item_type"),
+                "primary_color": data.get("primary_color"),
+                "secondary_colors": data.get("secondary_colors") if isinstance(data.get("secondary_colors"), list) else [],
+                "brand": data.get("brand"),
+                "model": data.get("model"),
+                "features": data.get("features") if isinstance(data.get("features"), list) else [],
+                "visual_description": data.get("visual_description"),
+                "analyzed_at": datetime.utcnow().isoformat()
+            }
+            return cleaned
+    except Exception as e:
+        print(f"[Gemini Image Analysis Notice] {e}")
+        return None
+
+    return None
+
+
+def get_item_ai_analysis(item: dict) -> Optional[Dict]:
+    """Retrieves AI analysis for an item from in-memory cache or item record."""
+    item_id = item.get("id")
+    if item_id in AI_ANALYSIS_STORE:
+        return AI_ANALYSIS_STORE[item_id]
+
+    ai_field = item.get("ai_analysis")
+    if ai_field:
+        if isinstance(ai_field, dict):
+            AI_ANALYSIS_STORE[item_id] = ai_field
+            return ai_field
+        elif isinstance(ai_field, str):
+            try:
+                parsed = json.loads(ai_field)
+                AI_ANALYSIS_STORE[item_id] = parsed
+                return parsed
+            except Exception:
+                pass
+    return None
+
+
 def calculate_match_score(lost_item: dict, found_item: dict):
+    """
+    Hybrid Smart Match Algorithm combining structured DB signals with Gemini AI visual features.
+    Computes a deterministic, traceable confidence score (0-98%) with factual match explanations.
+    """
     score = 0
     matched_reasons = []
 
-    # Category match (+45 points)
-    if lost_item["category"] == found_item["category"] and lost_item["category"] != "Other":
-        score += 45
-        matched_reasons.append(f"Category: {lost_item['category']}")
-    elif lost_item["category"] == found_item["category"]:
-        score += 25
+    lost_ai = get_item_ai_analysis(lost_item)
+    found_ai = get_item_ai_analysis(found_item)
 
-    # Title keyword overlap
-    lost_title_words = extract_keywords(lost_item["name"])
-    found_title_words = extract_keywords(found_item["name"])
+    lost_name = (lost_item.get("name") or "").lower()
+    lost_desc = (lost_item.get("description") or "").lower()
+    found_name = (found_item.get("name") or "").lower()
+    found_desc = (found_item.get("description") or "").lower()
+    lost_combined_text = f"{lost_name} {lost_desc}"
+    found_combined_text = f"{found_name} {found_desc}"
+
+    # 1. Category Matching (+25 points)
+    lost_cat = lost_item.get("category")
+    found_cat = found_item.get("category")
+    if lost_cat and found_cat and lost_cat == found_cat and lost_cat != "Other":
+        score += 25
+        matched_reasons.append(f"Same category: {lost_cat}")
+    elif found_ai and found_ai.get("category") and lost_cat and found_ai["category"].lower() == lost_cat.lower():
+        score += 20
+        matched_reasons.append(f"AI verified category: {lost_cat}")
+
+    # 2. Brand Matching (+25 points)
+    brand_found = False
+    if found_ai and found_ai.get("brand"):
+        f_brand = found_ai["brand"].strip()
+        if f_brand and len(f_brand) >= 2:
+            if re.search(r"\b" + re.escape(f_brand.lower()) + r"\b", lost_combined_text):
+                score += 25
+                matched_reasons.append(f"Same brand: {f_brand}")
+                brand_found = True
+
+    if not brand_found:
+        for b in KNOWN_BRANDS:
+            if re.search(r"\b" + re.escape(b) + r"\b", lost_combined_text) and re.search(r"\b" + re.escape(b) + r"\b", found_combined_text):
+                score += 25
+                matched_reasons.append(f"Same brand: {b.upper() if len(b) <= 4 else b.title()}")
+                break
+
+    # 3. Item Type & Title Keywords Matching (+25 points)
+    lost_title_words = extract_keywords(lost_item.get("name") or "")
+    found_title_words = extract_keywords(found_item.get("name") or "")
     title_overlap = lost_title_words.intersection(found_title_words)
     if title_overlap:
-        score += min(35, len(title_overlap) * 18)
-        matched_reasons.append(f"Keywords: {', '.join(title_overlap)}")
+        score += min(25, len(title_overlap) * 12)
+        matched_reasons.append(f"Title keywords: {', '.join(sorted(title_overlap))}")
 
-    # Location keyword overlap
-    lost_loc_words = extract_keywords(lost_item["location"])
-    found_loc_words = extract_keywords(found_item["location"])
+    if found_ai and found_ai.get("item_type"):
+        f_type = found_ai["item_type"].strip()
+        if f_type and f_type.lower() in lost_combined_text:
+            score += 15
+            matched_reasons.append(f"Item type: {f_type}")
+
+    # 4. Color Matching (+15 points)
+    color_found = False
+    if found_ai and found_ai.get("primary_color"):
+        p_color = found_ai["primary_color"].strip().lower()
+        if p_color and p_color in lost_combined_text:
+            score += 15
+            matched_reasons.append(f"Matching color: {found_ai['primary_color']}")
+            color_found = True
+
+    if not color_found:
+        for c in KNOWN_COLORS:
+            if re.search(r"\b" + re.escape(c) + r"\b", lost_combined_text) and re.search(r"\b" + re.escape(c) + r"\b", found_combined_text):
+                score += 15
+                matched_reasons.append(f"Matching color: {c.title()}")
+                break
+
+    # 5. Location Overlap (+20 points)
+    lost_loc_words = extract_keywords(lost_item.get("location") or "")
+    found_loc_words = extract_keywords(found_item.get("location") or "")
     loc_overlap = lost_loc_words.intersection(found_loc_words)
     if loc_overlap:
-        score += min(20, len(loc_overlap) * 12)
-        matched_reasons.append(f"Location: {', '.join(loc_overlap)}")
+        score += min(20, len(loc_overlap) * 10)
+        matched_reasons.append(f"Same campus location: {', '.join(sorted(loc_overlap)).title()}")
 
-    # Description overlap
-    lost_desc_words = extract_keywords(lost_item.get("description") or "")
-    found_desc_words = extract_keywords(found_item.get("description") or "")
+    # 6. AI Visual Features Overlap (+15 points)
+    if found_ai and found_ai.get("features"):
+        matched_feat_list = []
+        for feat in found_ai["features"]:
+            feat_words = extract_keywords(feat)
+            if feat_words and any(w in lost_combined_text for w in feat_words):
+                matched_feat_list.append(feat)
+        if matched_feat_list:
+            score += min(15, len(matched_feat_list) * 8)
+            matched_reasons.append(f"Visual features: {', '.join(matched_feat_list[:2])}")
+
+    # 7. Description Details (+10 points)
+    lost_desc_words = extract_keywords(lost_desc)
+    found_desc_words = extract_keywords(found_desc)
     desc_overlap = lost_desc_words.intersection(found_desc_words)
     if desc_overlap:
-        score += min(15, len(desc_overlap) * 8)
+        score += min(10, len(desc_overlap) * 5)
+        matched_reasons.append("Similar description details")
 
-    if score >= 40:
-        confidence = min(98, 50 + int(score * 0.6))
-        return confidence, matched_reasons
-    return 0, []
+    # 8. Date Proximity (+5 points)
+    lost_date = lost_item.get("date") or lost_item.get("item_date")
+    found_date = found_item.get("date") or found_item.get("item_date")
+    if lost_date and found_date and lost_date == found_date:
+        score += 5
+
+    # Threshold Check & Confidence Score Calculation
+    if score >= 35:
+        confidence = min(98, 45 + int(score * 0.65))
+        ai_summary = found_ai.get("visual_description") if found_ai else None
+        return confidence, matched_reasons, ai_summary
+
+    return 0, [], None
 
 
 SMART_MATCHES_CACHE = None
 SMART_MATCHES_CACHE_TIME = 0.0
-CACHE_TTL_SECONDS = 5.0
+CACHE_TTL_SECONDS = 4.0
 
 
 def invalidate_smart_matches_cache():
@@ -379,16 +595,23 @@ def get_all_smart_matches():
     found_items = db.get_items(item_type="Found", status="Open")
 
     matches = []
+    seen_pairs = set()
+
     for l in lost_items:
         for f in found_items:
             if l["owner_id"] == f["owner_id"]:
                 continue
+            pair_key = (l["id"], f["id"])
+            if pair_key in seen_pairs:
+                continue
 
-            score, reasons = calculate_match_score(l, f)
+            score, reasons, ai_summary = calculate_match_score(l, f)
             if score >= 60:
+                seen_pairs.add(pair_key)
                 matches.append({
                     "score": score,
                     "reasons": reasons,
+                    "ai_visual_description": ai_summary,
                     "lost_item": l,
                     "found_item": f,
                 })
@@ -748,9 +971,26 @@ class FoundlyHandler(SimpleHTTPRequestHandler):
                     "owner_role": user.get("campus_role") or "Student",
                 }
                 created = db.create_item(item_data)
+                created_id = created["id"]
                 invalidate_smart_matches_cache()
-                RECENT_SUBMISSIONS[sub_key] = (now, created["id"])
-                self.send_json({"item": {"id": created["id"]}}, 201)
+                RECENT_SUBMISSIONS[sub_key] = (now, created_id)
+
+                # Async Gemini Vision Analysis (non-blocking, never delays report response)
+                if img and gemini_client:
+                    def _async_gemini_task(it_id, it_img):
+                        try:
+                            analysis = analyze_image_with_gemini(it_img)
+                            if analysis:
+                                AI_ANALYSIS_STORE[it_id] = analysis
+                                db.update_item_ai_analysis(it_id, analysis)
+                                invalidate_smart_matches_cache()
+                                print(f"✓ Gemini AI analyzed item #{it_id} successfully: {analysis.get('brand')} {analysis.get('item_type')}")
+                        except Exception as e:
+                            print(f"[Gemini Background Task Error] {e}")
+
+                    threading.Thread(target=_async_gemini_task, args=(created_id, img), daemon=True).start()
+
+                self.send_json({"item": {"id": created_id}}, 201)
                 return
 
             # 6. Update Item Status

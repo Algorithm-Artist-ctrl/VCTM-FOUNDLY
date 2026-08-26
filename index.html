@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>VCTM Foundly — Verified Campus Lost & Found</title>
-    <link rel="stylesheet" href="styles.css?v=6.7.0" />
+    <link rel="stylesheet" href="styles.css?v=7.0.0" />
   </head>
   <body>
     <div class="ambient ambient-one"></div>
@@ -598,6 +598,23 @@
       </div>
     </dialog>
 
+    <!-- AI Smart Match Detail Dialog -->
+    <dialog id="matchDetailDialog">
+      <div class="item-detail-panel" style="max-width: 720px;">
+        <div class="modal-head">
+          <div>
+            <p class="eyebrow"><span></span> AI-POWERED CORRELATION</p>
+            <h2>⚡ Smart Match Verification</h2>
+          </div>
+          <button class="close" id="closeMatchDetail" aria-label="Close">×</button>
+        </div>
+
+        <div id="matchDetailContent">
+          <!-- Dynamically populated -->
+        </div>
+      </div>
+    </dialog>
+
     <!-- Safe Connection & Claim Dialog -->
     <dialog id="connectDialog">
       <form id="connectForm" method="dialog">
@@ -851,6 +868,6 @@
 
     <!-- Supabase Cloud Client SDK -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="app.js?v=6.7.0"></script>
+    <script src="app.js?v=7.0.0"></script>
   </body>
 </html>
