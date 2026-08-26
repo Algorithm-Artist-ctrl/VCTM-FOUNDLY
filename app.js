@@ -1530,6 +1530,16 @@ document.querySelector('#btnMetricMatches')?.addEventListener('click', async () 
   }
   await loadSmartMatches();
 });
+document.querySelectorAll('a[href="#matches"]').forEach((el) => {
+  el.addEventListener('click', async (e) => {
+    e.preventDefault();
+    const matchesSection = document.querySelector('#matches') || document.querySelector('#userSmartMatchesContainer');
+    if (matchesSection) {
+      matchesSection.scrollIntoView({ behavior: 'smooth' });
+    }
+    await loadSmartMatches();
+  });
+});
 document.querySelector('#btnMetricMessages')?.addEventListener('click', openConnections);
 document.querySelector('#btnMetricProfile')?.addEventListener('click', openUserProfile);
 
@@ -1683,7 +1693,11 @@ if (authForm) {
       authForm.reset();
       syncUser();
       notify(`Welcome back, ${currentUser.name}!`);
-      if (currentUser.role === 'admin') openAdmin();
+      if (currentUser.role === 'admin') {
+        openAdmin();
+      } else {
+        await Promise.all([loadItems(), loadSmartMatches(), loadConnections()]);
+      }
     } catch (err) {
       errElem.textContent = err.message;
     }
@@ -1819,8 +1833,7 @@ if (reportForm) {
       clearPhotoUpload();
 
       // 4. Refresh items, smart matches, dashboard counters, and my reports
-      await loadItems();
-      loadSmartMatches();
+      await Promise.all([loadItems(), loadSmartMatches(), loadConnections()]);
       if (myReportsDialog && myReportsDialog.open) {
         loadMyReports();
       }

@@ -196,8 +196,6 @@ class SupabaseDB:
     # Items
     def get_items(self, search: str = "", category: str = "All", item_type: str = "All", status: str = "All") -> List[Dict]:
         params = {"select": "*", "order": "id.desc"}
-        if status != "All":
-            params["status"] = f"eq.{status}"
         if item_type != "All":
             params["type"] = f"eq.{item_type}"
         if category != "All":
@@ -206,6 +204,11 @@ class SupabaseDB:
             params["or"] = f"(name.ilike.*{search}*,location.ilike.*{search}*,description.ilike.*{search}*,category.ilike.*{search}*)"
 
         items = self._request("items", "GET", params=params)
+        if status == "Open":
+            items = [it for it in items if it.get("status") in ("Open", None, "")]
+        elif status != "All":
+            items = [it for it in items if it.get("status") == status]
+
         for it in items:
             it["date"] = it.get("item_date") or ""
         return items
@@ -585,6 +588,44 @@ def invalidate_smart_matches_cache():
     SMART_MATCHES_CACHE_TIME = 0.0
 
 
+def sync_match_connection(match: dict):
+    """Automatically records high-confidence smart match connection into Supabase if not present."""
+    try:
+        l = match.get("lost_item") or {}
+        f = match.get("found_item") or {}
+        lost_owner_id = l.get("owner_id")
+        found_owner_id = f.get("owner_id")
+        if not lost_owner_id or not found_owner_id or str(lost_owner_id) == str(found_owner_id):
+            return
+        
+        # Check existing connection for this item & recipient
+        existing = db._request("connections", "GET", params={
+            "item_id": f"eq.{f['id']}",
+            "recipient_id": f"eq.{lost_owner_id}",
+            "select": "id"
+        })
+        if not existing:
+            reasons_str = ", ".join(match.get("reasons", [])[:3])
+            conn_payload = {
+                "item_id": f["id"],
+                "sender_id": found_owner_id,
+                "sender_name": f.get("owner_name") or "Campus Finder",
+                "sender_email": f.get("owner_email") or "",
+                "sender_role": f.get("owner_role") or "Student",
+                "sender_phone": f.get("owner_phone"),
+                "recipient_id": lost_owner_id,
+                "recipient_name": l.get("owner_name") or "Item Owner",
+                "recipient_email": l.get("owner_email") or "",
+                "recipient_role": l.get("owner_role") or "Student",
+                "recipient_phone": l.get("owner_phone"),
+                "message": f"⚡ AI SMART MATCH ({match['score']}% Match): Found item '{f.get('name')}' matches your lost report '{l.get('name')}'. Verified signals: {reasons_str}.",
+                "status": "Matched",
+            }
+            db.create_connection(conn_payload)
+    except Exception:
+        pass
+
+
 def get_all_smart_matches():
     global SMART_MATCHES_CACHE, SMART_MATCHES_CACHE_TIME
     now = time.time()
@@ -599,22 +640,24 @@ def get_all_smart_matches():
 
     for l in lost_items:
         for f in found_items:
-            if l["owner_id"] == f["owner_id"]:
+            if str(l.get("owner_id")) == str(f.get("owner_id")):
                 continue
             pair_key = (l["id"], f["id"])
             if pair_key in seen_pairs:
                 continue
 
             score, reasons, ai_summary = calculate_match_score(l, f)
-            if score >= 60:
+            if score >= 55:
                 seen_pairs.add(pair_key)
-                matches.append({
+                match_obj = {
                     "score": score,
                     "reasons": reasons,
                     "ai_visual_description": ai_summary,
                     "lost_item": l,
                     "found_item": f,
-                })
+                }
+                matches.append(match_obj)
+                sync_match_connection(match_obj)
 
     matches.sort(key=lambda x: x["score"], reverse=True)
     SMART_MATCHES_CACHE = matches
