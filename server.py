@@ -116,8 +116,28 @@ def is_college_email(email: str) -> bool:
 
 
 # -------------------------------------------------------------
-# SUPABASE CLOUD DATABASE CLIENT (ZERO-DEPENDENCY)
+# HIGH-PERFORMANCE IN-MEMORY CACHES & DATABASE CLIENT
 # -------------------------------------------------------------
+ITEMS_CACHE: Dict[str, Tuple[float, List[Dict]]] = {}
+ITEMS_CACHE_TTL = 6.0
+SMART_MATCHES_CACHE = None
+SMART_MATCHES_CACHE_TIME = 0.0
+CACHE_TTL_SECONDS = 6.0
+
+
+def invalidate_all_caches():
+    global ITEMS_CACHE, SMART_MATCHES_CACHE, SMART_MATCHES_CACHE_TIME
+    ITEMS_CACHE.clear()
+    SMART_MATCHES_CACHE = None
+    SMART_MATCHES_CACHE_TIME = 0.0
+
+
+def invalidate_smart_matches_cache():
+    global SMART_MATCHES_CACHE, SMART_MATCHES_CACHE_TIME
+    SMART_MATCHES_CACHE = None
+    SMART_MATCHES_CACHE_TIME = 0.0
+
+
 class SupabaseDB:
     def __init__(self, base_url: str, service_key: str):
         self.base_url = base_url.rstrip("/")
@@ -196,6 +216,13 @@ class SupabaseDB:
 
     # Items
     def get_items(self, search: str = "", category: str = "All", item_type: str = "All", status: str = "All") -> List[Dict]:
+        cache_key = f"{search}|{category}|{item_type}|{status}"
+        now = time.time()
+        if cache_key in ITEMS_CACHE:
+            ts, cached_val = ITEMS_CACHE[cache_key]
+            if (now - ts) < ITEMS_CACHE_TTL:
+                return cached_val
+
         params = {"select": "*", "order": "id.desc"}
         if item_type != "All":
             params["type"] = f"eq.{item_type}"
@@ -212,6 +239,8 @@ class SupabaseDB:
 
         for it in items:
             it["date"] = it.get("item_date") or ""
+
+        ITEMS_CACHE[cache_key] = (now, items)
         return items
 
     def get_item_by_id(self, item_id: int) -> Optional[Dict]:
@@ -223,13 +252,16 @@ class SupabaseDB:
         return None
 
     def create_item(self, item_dict: Dict) -> Dict:
+        invalidate_all_caches()
         res = self._request("items", "POST", data=item_dict)
         return res[0]
 
     def update_item_status(self, item_id: int, status: str):
+        invalidate_all_caches()
         self._request(f"items?id=eq.{item_id}", "PATCH", data={"status": status})
 
     def delete_item(self, item_id: int):
+        invalidate_all_caches()
         try:
             self._request(f"connections?item_id=eq.{item_id}", "DELETE")
         except Exception:
@@ -237,6 +269,7 @@ class SupabaseDB:
         self._request(f"items?id=eq.{item_id}", "DELETE")
 
     def update_item_ai_analysis(self, item_id: int, ai_data: Dict):
+        invalidate_all_caches()
         try:
             self._request(f"items?id=eq.{item_id}", "PATCH", data={"ai_analysis": json.dumps(ai_data)})
         except Exception:
@@ -745,17 +778,6 @@ def calculate_match_score(lost_item: dict, found_item: dict) -> Tuple[int, str, 
 
     ai_desc = found_ai.get("visual_description") if found_ai else None
     return final_score, strength, reasons, ai_desc
-
-
-SMART_MATCHES_CACHE = None
-SMART_MATCHES_CACHE_TIME = 0.0
-CACHE_TTL_SECONDS = 4.0
-
-
-def invalidate_smart_matches_cache():
-    global SMART_MATCHES_CACHE, SMART_MATCHES_CACHE_TIME
-    SMART_MATCHES_CACHE = None
-    SMART_MATCHES_CACHE_TIME = 0.0
 
 
 def sync_match_connection(match: dict):

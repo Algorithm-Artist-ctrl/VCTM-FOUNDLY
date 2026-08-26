@@ -72,41 +72,98 @@ const escapeHtml = (str) =>
 // Cross-Tab Broadcast Channel for Instant Session Sync
 const authChannel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('foundly_auth') : null;
 
-// Helper: API Fetcher with Dual Token/Cookie Auth
+// -------------------------------------------------------------
+// CENTRALIZED IN-FLIGHT DEDUPLICATION & CLIENT READ CACHE
+// -------------------------------------------------------------
+const inflightGetRequests = new Map();
+const clientDataCache = new Map();
+const CLIENT_CACHE_TTL_MS = 6000; // 6 seconds memory cache for read endpoints
+
+function invalidateClientCache(pathPrefix = null) {
+  if (!pathPrefix) {
+    clientDataCache.clear();
+  } else {
+    for (const key of clientDataCache.keys()) {
+      if (key.startsWith(pathPrefix)) clientDataCache.delete(key);
+    }
+  }
+}
+
+// Helper: API Fetcher with Dual Token/Cookie Auth, In-Flight Deduplication & Caching
 const api = async (path, options = {}) => {
+  const method = (options.method || 'GET').toUpperCase();
+  const isGet = method === 'GET';
+  const bypassCache = options.bypassCache === true;
+
+  // Invalidate cache on mutations
+  if (!isGet) {
+    invalidateClientCache();
+  }
+
+  // Check client read cache
+  if (isGet && !bypassCache) {
+    const cached = clientDataCache.get(path);
+    if (cached && (Date.now() - cached.timestamp) < CLIENT_CACHE_TTL_MS) {
+      return cached.data;
+    }
+    // Check in-flight promise deduplication
+    if (inflightGetRequests.has(path)) {
+      return inflightGetRequests.get(path);
+    }
+  }
+
   const token = localStorage.getItem('foundly_token');
   const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const response = await fetch(path, {
-    credentials: 'include',
-    headers,
-    ...options,
-  });
+  const fetchPromise = (async () => {
+    try {
+      const response = await fetch(path, {
+        credentials: 'include',
+        headers,
+        ...options,
+      });
 
-  if (response.headers.get('Content-Type')?.includes('text/csv')) {
-    return response.blob();
+      if (response.headers.get('Content-Type')?.includes('text/csv')) {
+        return await response.blob();
+      }
+
+      let data;
+      try {
+        data = await response.json();
+      } catch (err) {
+        data = { error: `Server error (${response.status})` };
+      }
+
+      if (response.status === 401 && currentUser && path !== '/api/login' && path !== '/api/register') {
+        // Session invalidated on server
+        handleRemoteLogout();
+      }
+
+      if (!response.ok) {
+        const errorMsg = data.detail || data.error || 'Something went wrong. Please try again.';
+        throw new Error(errorMsg);
+      }
+
+      if (isGet && !bypassCache) {
+        clientDataCache.set(path, { data, timestamp: Date.now() });
+      }
+
+      return data;
+    } finally {
+      if (isGet) {
+        inflightGetRequests.delete(path);
+      }
+    }
+  })();
+
+  if (isGet && !bypassCache) {
+    inflightGetRequests.set(path, fetchPromise);
   }
 
-  let data;
-  try {
-    data = await response.json();
-  } catch (err) {
-    data = { error: `Server error (${response.status})` };
-  }
-
-  if (response.status === 401 && currentUser && path !== '/api/login' && path !== '/api/register') {
-    // Session invalidated on server
-    handleRemoteLogout();
-  }
-
-  if (!response.ok) {
-    const errorMsg = data.detail || data.error || 'Something went wrong. Please try again.';
-    throw new Error(errorMsg);
-  }
-  return data;
+  return fetchPromise;
 };
 
 // Helper: Toast Notification
@@ -2253,25 +2310,33 @@ document.querySelector('#btnAdminRefresh')?.addEventListener('click', async () =
 
 document.querySelector('#adminHeaderSignOut')?.addEventListener('click', handleSignOut);
 
-// Notifications check badge
-async function checkPendingUpdates() {
-  if (!currentUser) return;
-  try {
-    const s = await api('/api/session');
-    const dot = document.querySelector('#notifDot');
-    const badge = document.querySelector('#navConnBadge');
-    const mobileBadge = document.querySelector('#mobileConnBadge');
-    const count = s.pending_count || 0;
-    if (dot) dot.classList.toggle('hidden', count === 0);
-    if (badge) {
-      badge.textContent = count;
-      badge.classList.toggle('hidden', count === 0);
+// Centralized notifications & badges updater (DOM only, zero extra API calls)
+function updateNotificationBadges(pendingCount = 0, matchesCount = null) {
+  const dot = document.querySelector('#notifDot');
+  const badge = document.querySelector('#navConnBadge');
+  const mobileBadge = document.querySelector('#mobileConnBadge');
+  if (dot) dot.classList.toggle('hidden', pendingCount === 0);
+  if (badge) {
+    badge.textContent = pendingCount;
+    badge.classList.toggle('hidden', pendingCount === 0);
+  }
+  if (mobileBadge) {
+    mobileBadge.textContent = pendingCount;
+    mobileBadge.classList.toggle('hidden', pendingCount === 0);
+  }
+
+  if (matchesCount !== null) {
+    const matchBadge = document.querySelector('#navMatchBadge');
+    const mobileMatchBadge = document.querySelector('#mobileMatchBadge');
+    if (matchBadge) {
+      matchBadge.textContent = matchesCount;
+      matchBadge.classList.toggle('hidden', matchesCount === 0);
     }
-    if (mobileBadge) {
-      mobileBadge.textContent = count;
-      mobileBadge.classList.toggle('hidden', count === 0);
+    if (mobileMatchBadge) {
+      mobileMatchBadge.textContent = matchesCount;
+      mobileMatchBadge.classList.toggle('hidden', matchesCount === 0);
     }
-  } catch (_) {}
+  }
 }
 
 // Dialog backdrop and modal-open class management
@@ -2294,7 +2359,7 @@ document.querySelectorAll('dialog').forEach((dlg) => {
 });
 
 // -------------------------------------------------------------
-// INITIALIZATION
+// CENTRALIZED APP INITIALIZATION (ONE DATA FETCH LIFECYCLE)
 // -------------------------------------------------------------
 try {
   const cachedUserStr = localStorage.getItem('foundly_user');
@@ -2306,10 +2371,12 @@ try {
 
 (async () => {
   try {
+    // 1. Single authoritative session call
     const sessionData = await api('/api/session');
     if (sessionData && sessionData.user) {
       currentUser = sessionData.user;
       localStorage.setItem('foundly_user', JSON.stringify(currentUser));
+      updateNotificationBadges(sessionData.pending_count || 0, sessionData.matches_count || 0);
     } else {
       currentUser = null;
       localStorage.removeItem('foundly_user');
@@ -2317,31 +2384,44 @@ try {
     }
     syncUser();
 
-    // Fetch items, smart matches, and connections in parallel
-    await Promise.all([
-      loadItems(),
-      loadSmartMatches(),
-      loadConnections()
-    ]);
-    checkPendingUpdates();
-
-    setInterval(async () => {
-      // Background session validation
-      try {
-        const s = await api('/api/session');
-        if (!s || !s.user) {
-          if (currentUser) {
-            handleRemoteLogout();
-          }
-        }
-      } catch (_) {}
+    // 2. Fetch data once in parallel
+    if (currentUser) {
       await Promise.all([
         loadItems(),
         loadSmartMatches(),
         loadConnections()
       ]);
-      checkPendingUpdates();
-    }, 8000);
+    } else {
+      await loadItems();
+    }
+
+    // 3. Gentle background validation (30 seconds, pauses when tab is hidden)
+    setInterval(async () => {
+      if (document.hidden || !currentUser) return;
+      try {
+        const s = await api('/api/session', { bypassCache: true });
+        if (!s || !s.user) {
+          handleRemoteLogout();
+          return;
+        }
+        updateNotificationBadges(s.pending_count || 0, s.matches_count || 0);
+      } catch (_) {}
+    }, 30000);
+
+    // 4. Instant session sync when returning to the tab
+    document.addEventListener('visibilitychange', async () => {
+      if (!document.hidden && currentUser) {
+        try {
+          const s = await api('/api/session', { bypassCache: true });
+          if (s && s.user) {
+            updateNotificationBadges(s.pending_count || 0, s.matches_count || 0);
+          } else {
+            handleRemoteLogout();
+          }
+        } catch (_) {}
+      }
+    });
+
   } catch (e) {
     console.error('Init error:', e);
   }
