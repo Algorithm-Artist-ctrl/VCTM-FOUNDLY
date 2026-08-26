@@ -349,9 +349,13 @@ if (connectRemovePhotoBtn) {
 // -------------------------------------------------------------
 function isItemOwner(item) {
   if (!currentUser || !item) return false;
-  const matchId = currentUser.id != null && item.owner_id != null && String(currentUser.id) === String(item.owner_id);
-  const matchEmail = !!(currentUser.email && item.owner_email && currentUser.email.trim().toLowerCase() === item.owner_email.trim().toLowerCase());
-  return matchId || matchEmail;
+  if (currentUser.id != null && item.owner_id != null) {
+    return Number(currentUser.id) === Number(item.owner_id);
+  }
+  if (currentUser.email && item.owner_email) {
+    return currentUser.email.trim().toLowerCase() === item.owner_email.trim().toLowerCase();
+  }
+  return false;
 }
 
 function renderItems() {
@@ -368,12 +372,26 @@ function renderItems() {
     }
 
     const matchCat = currentCategoryFilter === 'All' || i.category === currentCategoryFilter;
-    const matchStatus =
-      currentStatusFilter === 'All'
-        ? true
-        : currentStatusFilter === 'Open'
-        ? i.status === 'Open' || !i.status
-        : i.status === currentStatusFilter;
+
+    // When viewing "My Posts" tab, show all owned reports (Active + Resolved) unless user explicitly filtered by a specific status
+    let matchStatus = true;
+    if (currentFilter === 'MyPosts') {
+      if (currentStatusFilter === 'Resolved') {
+        matchStatus = i.status === 'Resolved';
+      } else if (currentStatusFilter === 'Archived') {
+        matchStatus = i.status === 'Archived';
+      } else {
+        matchStatus = true; // Show all user's reports by default
+      }
+    } else {
+      matchStatus =
+        currentStatusFilter === 'All'
+          ? true
+          : currentStatusFilter === 'Open'
+          ? i.status === 'Open' || !i.status
+          : i.status === currentStatusFilter;
+    }
+
     const searchTarget = `${i.name} ${i.category} ${i.location} ${i.description || ''}`.toLowerCase();
     const matchSearch = !q || searchTarget.includes(q);
     return matchType && matchCat && matchStatus && matchSearch;
@@ -1316,9 +1334,11 @@ function syncUserMetrics() {
   if (!currentUser) return;
   const myItems = items.filter((i) => isItemOwner(i));
   const myActiveCount = myItems.filter((i) => i.status === 'Open' || !i.status).length;
-  const myMatchesCount = matches.filter((m) => 
-    isItemOwner(m.lost_item) || isItemOwner(m.found_item)
-  ).length;
+  const myMatchesCount = matches.filter((m) => {
+    const isOwner = isItemOwner(m.lost_item) || isItemOwner(m.found_item);
+    const isActive = m.lost_item?.status !== 'Resolved' && m.found_item?.status !== 'Resolved';
+    return isOwner && isActive;
+  }).length;
   const myMessagesCount = connections.length;
 
   const metricReportsEl = document.querySelector('#metricMyReportsCount');
@@ -1333,8 +1353,7 @@ function syncUserMetrics() {
   const filterMyPostsCount = document.querySelector('#filterMyPostsCount');
   if (myPostsPill) myPostsPill.classList.remove('hidden');
   if (filterMyPostsCount) {
-    const isShowingAllStatus = currentStatusFilter === 'All';
-    filterMyPostsCount.textContent = isShowingAllStatus ? myItems.length : myActiveCount;
+    filterMyPostsCount.textContent = myItems.length;
   }
 
   // Render Personal Items directly inside Dashboard
