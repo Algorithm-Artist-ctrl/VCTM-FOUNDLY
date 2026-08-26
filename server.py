@@ -214,6 +214,10 @@ class SupabaseDB:
         self._request(f"items?id=eq.{item_id}", "PATCH", data={"status": status})
 
     def delete_item(self, item_id: int):
+        try:
+            self._request(f"connections?item_id=eq.{item_id}", "DELETE")
+        except Exception:
+            pass
         self._request(f"items?id=eq.{item_id}", "DELETE")
 
     # Connections / Inbox
@@ -794,6 +798,9 @@ class FoundlyHandler(SimpleHTTPRequestHandler):
                     self.send_error_json("Report no longer exists.", 404)
                     return
 
+                owner_user = db.get_user_by_email(item["owner_email"])
+                owner_phone = owner_user.get("phone") if owner_user else None
+
                 conn_data = {
                     "item_id": item["id"],
                     "sender_id": user["id"],
@@ -805,6 +812,7 @@ class FoundlyHandler(SimpleHTTPRequestHandler):
                     "recipient_name": item["owner_name"],
                     "recipient_email": item["owner_email"],
                     "recipient_role": item.get("owner_role") or "Student",
+                    "recipient_phone": owner_phone,
                     "message": msg,
                     "status": "Pending",
                 }

@@ -542,6 +542,10 @@ async function loadSmartMatches() {
               const lThumb = l.image_data ? `<img src="${l.image_data}" alt="${escapeHtml(l.name)}" />` : lIcon;
               const fThumb = f.image_data ? `<img src="${f.image_data}" alt="${escapeHtml(f.name)}" />` : fIcon;
 
+              const isLostOwner = isItemOwner(l);
+              const targetItem = isLostOwner ? f : l;
+              const btnLabel = isLostOwner ? 'Connect & Reclaim 💬' : 'Notify Owner 💬';
+
               return `
               <article class="match-pair-card">
                 <!-- Lost Side -->
@@ -559,8 +563,8 @@ async function loadSmartMatches() {
                 <div class="match-center-meter">
                   <span class="match-score-badge">⚡ ${m.score}% MATCH</span>
                   <small style="color:var(--muted); font-size:9px;">${escapeHtml(m.reasons.join(' · '))}</small>
-                  <button class="button button-primary button-sm" data-match-connect-item="${f.id}" data-match-lost-id="${l.id}">
-                    Connect & Reclaim 💬
+                  <button class="button button-primary button-sm" data-match-connect-item="${targetItem.id}">
+                    ${btnLabel}
                   </button>
                 </div>
 
@@ -678,31 +682,55 @@ function openItemDetail(itemId) {
       </button>
     `;
 
-    document.querySelector('#btnToggleStatus')?.addEventListener('click', async () => {
+    const toggleBtn = document.querySelector('#btnToggleStatus');
+    toggleBtn?.addEventListener('click', async () => {
+      const nextStatus = isResolved ? 'Open' : 'Resolved';
+      const origText = toggleBtn.innerHTML;
+      toggleBtn.disabled = true;
+      toggleBtn.innerHTML = '⏳ Updating...';
       try {
-        const nextStatus = isResolved ? 'Open' : 'Resolved';
         await api(`/api/items/${item.id}/status`, {
           method: 'POST',
           body: JSON.stringify({ status: nextStatus }),
         });
+        const localItem = items.find((x) => x.id === item.id);
+        if (localItem) localItem.status = nextStatus;
+        renderItems();
+        syncUserMetrics();
         itemDetailDialog.close();
-        await loadItems();
-        notify(`Item marked as ${nextStatus.toLowerCase()}.`);
+        notify(`✓ Report marked as ${nextStatus.toLowerCase()}.`);
+        await Promise.all([loadItems(), loadSmartMatches()]);
       } catch (e) {
-        notify(e.message);
+        notify(`Could not update status: ${e.message}`);
+        toggleBtn.disabled = false;
+        toggleBtn.innerHTML = origText;
       }
     });
 
-    document.querySelector('#btnDeleteItem')?.addEventListener('click', async () => {
-      if (confirm('Are you sure you want to permanently delete this report?')) {
-        try {
-          await api(`/api/items/${item.id}`, { method: 'DELETE' });
-          itemDetailDialog.close();
-          await loadItems();
-          notify('Report deleted successfully.');
-        } catch (e) {
-          notify(e.message);
-        }
+    const deleteBtn = document.querySelector('#btnDeleteItem');
+    deleteBtn?.addEventListener('click', async () => {
+      if (!confirm('Are you sure you want to permanently delete this report?')) return;
+      const origText = deleteBtn.innerHTML;
+      deleteBtn.disabled = true;
+      deleteBtn.innerHTML = '⏳ Deleting...';
+
+      try {
+        await api(`/api/items/${item.id}`, { method: 'DELETE' });
+        items = items.filter((x) => x.id !== item.id);
+        renderItems();
+        syncUserMetrics();
+        itemDetailDialog.close();
+        notify('✓ Report deleted successfully.');
+        await Promise.all([
+          loadItems(),
+          loadSmartMatches(),
+          loadConnections(),
+        ]);
+        syncUserMetrics();
+      } catch (e) {
+        notify(`Could not delete report: ${e.message}`);
+        deleteBtn.disabled = false;
+        deleteBtn.innerHTML = origText;
       }
     });
 
@@ -720,16 +748,16 @@ document.querySelector('#closeItemDetail')?.addEventListener('click', () => item
 // -------------------------------------------------------------
 // 4. MY REPORTS MODAL
 // -------------------------------------------------------------
-async function openMyReports() {
+async function loadMyReports() {
+  const container = document.querySelector('#myReportsList');
+  if (!container) return;
   if (!currentUser) {
-    openAuthModal('login');
-    notify('Please sign in to view your reports.');
+    container.innerHTML = '<p class="empty">Please sign in to view your reports.</p>';
     return;
   }
   try {
     const data = await api('/api/user/items');
     const userItems = data.items || [];
-    const container = document.querySelector('#myReportsList');
 
     if (!userItems.length) {
       container.innerHTML = '<p class="empty">You have not published any lost or found reports yet.</p>';
@@ -739,7 +767,7 @@ async function openMyReports() {
           const isResolved = it.status === 'Resolved';
           const itDate = it.date || it.item_date || (it.created_at ? new Date(it.created_at).toLocaleDateString() : '');
           return `
-          <article class="my-report-card">
+          <article class="my-report-card" data-my-card-id="${it.id}">
             <div class="my-report-info">
               <b>${escapeHtml(it.name)}</b>
               <small>⌖ ${escapeHtml(it.location)} · ${itDate}</small>
@@ -749,10 +777,10 @@ async function openMyReports() {
               </div>
             </div>
             <div class="my-report-actions">
-              <button class="button button-secondary button-sm" data-toggle-my-item="${it.id}" data-my-status="${it.status || 'Open'}">
+              <button class="button button-secondary button-sm" data-my-toggle-id="${it.id}" data-current-status="${it.status || 'Open'}">
                 ${isResolved ? '↺ Reopen' : '✓ Mark Resolved'}
               </button>
-              <button class="button button-danger button-sm" data-delete-my-item="${it.id}">
+              <button class="button button-danger button-sm" data-my-delete-id="${it.id}">
                 🗑 Delete
               </button>
             </div>
@@ -761,11 +789,19 @@ async function openMyReports() {
         })
         .join('');
     }
-
-    myReportsDialog.showModal();
   } catch (e) {
-    notify(e.message);
+    container.innerHTML = `<p class="empty" style="color:var(--coral);">Failed to load reports: ${escapeHtml(e.message)}</p>`;
   }
+}
+
+async function openMyReports() {
+  if (!currentUser) {
+    openAuthModal('login');
+    notify('Please sign in to view your reports.');
+    return;
+  }
+  myReportsDialog.showModal();
+  await loadMyReports();
 }
 
 document.querySelector('#openMyReports')?.addEventListener('click', openMyReports);
@@ -775,34 +811,71 @@ document.querySelector('#closeMyReports')?.addEventListener('click', () => myRep
 document.querySelector('#myReportsList')?.addEventListener('click', async (e) => {
   const toggleBtn = e.target.closest('[data-my-toggle-id]');
   if (toggleBtn) {
-    const itemId = toggleBtn.dataset.myToggleId;
+    if (toggleBtn.disabled) return;
+    const itemId = Number(toggleBtn.dataset.myToggleId);
     const current = toggleBtn.dataset.currentStatus;
     const nextStatus = current === 'Resolved' ? 'Open' : 'Resolved';
+    const origText = toggleBtn.innerHTML;
+    toggleBtn.disabled = true;
+    toggleBtn.innerHTML = '⏳ Updating...';
+
     try {
       await api(`/api/items/${itemId}/status`, {
         method: 'POST',
         body: JSON.stringify({ status: nextStatus }),
       });
-      notify(`Report marked as ${nextStatus.toLowerCase()}.`);
-      await loadItems();
-      openMyReports();
+      notify(`✓ Report marked as ${nextStatus.toLowerCase()}.`);
+      const localItem = items.find((x) => x.id === itemId);
+      if (localItem) localItem.status = nextStatus;
+      renderItems();
+      syncUserMetrics();
+      await Promise.all([loadMyReports(), loadSmartMatches()]);
     } catch (err) {
-      notify(err.message);
+      notify(`Could not update status: ${err.message}`);
+      toggleBtn.disabled = false;
+      toggleBtn.innerHTML = origText;
     }
     return;
   }
 
   const deleteBtn = e.target.closest('[data-my-delete-id]');
   if (deleteBtn) {
-    if (confirm('Permanently delete this report?')) {
-      try {
-        await api(`/api/items/${deleteBtn.dataset.myDeleteId}`, { method: 'DELETE' });
-        notify('Report deleted.');
-        await loadItems();
-        openMyReports();
-      } catch (err) {
-        notify(err.message);
+    if (deleteBtn.disabled) return;
+    const itemId = Number(deleteBtn.dataset.myDeleteId);
+    if (!confirm('Are you sure you want to permanently delete this report?')) return;
+
+    const origText = deleteBtn.innerHTML;
+    deleteBtn.disabled = true;
+    deleteBtn.innerHTML = '⏳ Deleting...';
+
+    try {
+      await api(`/api/items/${itemId}`, { method: 'DELETE' });
+
+      // 1. Instantly remove deleted item from local arrays & DOM
+      items = items.filter((x) => x.id !== itemId);
+      const card = deleteBtn.closest('.my-report-card');
+      if (card) card.remove();
+      const remainingCards = document.querySelectorAll('#myReportsList .my-report-card');
+      if (remainingCards.length === 0) {
+        document.querySelector('#myReportsList').innerHTML = '<p class="empty">You have not published any lost or found reports yet.</p>';
       }
+      renderItems();
+      syncUserMetrics();
+
+      // 2. Authoritative backend refresh in parallel
+      await Promise.all([
+        loadItems(),
+        loadSmartMatches(),
+        loadConnections(),
+      ]);
+      syncUserMetrics();
+
+      // 3. Clear success notification
+      notify('✓ Report deleted successfully.');
+    } catch (err) {
+      notify(`Could not delete report: ${err.message}`);
+      deleteBtn.disabled = false;
+      deleteBtn.innerHTML = origText;
     }
   }
 });
@@ -1022,10 +1095,21 @@ function openConnection(itemId) {
   connectDialog.showModal();
 }
 
+let isSendingClaim = false;
 if (connectForm) {
   connectForm.addEventListener('submit', async (e) => {
     if (e.submitter?.value === 'cancel') return;
     e.preventDefault();
+    if (isSendingClaim) return;
+
+    const submitBtn = connectForm.querySelector('button[type="submit"]');
+    const origBtnText = submitBtn ? submitBtn.innerHTML : 'Send Claim & Message <span>→</span>';
+    isSendingClaim = true;
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '⏳ Sending message...';
+    }
+
     try {
       await api('/api/connections', {
         method: 'POST',
@@ -1038,10 +1122,21 @@ if (connectForm) {
       connectDialog.close();
       connectForm.reset();
       clearConnectProofPhoto();
-      notify('Message sent with attached proof! View replies in Messages & Notifications.');
+      notify('✓ Claim request sent successfully! View replies in Messages & Notifications.');
+      await Promise.all([
+        loadConnections(),
+        loadItems(),
+        loadSmartMatches(),
+      ]);
       openConnections();
     } catch (err) {
-      notify(err.message);
+      notify(`Could not send claim message: ${err.message}`);
+    } finally {
+      isSendingClaim = false;
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = origBtnText;
+      }
     }
   });
 }
@@ -1077,7 +1172,8 @@ function openUserProfile() {
 
 function syncUserMetrics() {
   if (!currentUser) return;
-  const myReportsCount = items.filter((i) => isItemOwner(i)).length;
+  const myItems = items.filter((i) => isItemOwner(i));
+  const myActiveCount = myItems.filter((i) => i.status === 'Open' || !i.status).length;
   const myMatchesCount = matches.filter((m) => 
     isItemOwner(m.lost_item) || isItemOwner(m.found_item)
   ).length;
@@ -1086,7 +1182,7 @@ function syncUserMetrics() {
   const metricReportsEl = document.querySelector('#metricMyReportsCount');
   const metricMatchesEl = document.querySelector('#metricMyMatchesCount');
   const metricMessagesEl = document.querySelector('#metricMyMessagesCount');
-  if (metricReportsEl) metricReportsEl.textContent = myReportsCount;
+  if (metricReportsEl) metricReportsEl.textContent = myActiveCount;
   if (metricMatchesEl) metricMatchesEl.textContent = myMatchesCount;
   if (metricMessagesEl) metricMessagesEl.textContent = myMessagesCount;
 
@@ -1094,7 +1190,7 @@ function syncUserMetrics() {
   const myPostsPill = document.querySelector('#myPostsFilterPill');
   const filterMyPostsCount = document.querySelector('#filterMyPostsCount');
   if (myPostsPill) myPostsPill.classList.remove('hidden');
-  if (filterMyPostsCount) filterMyPostsCount.textContent = myReportsCount;
+  if (filterMyPostsCount) filterMyPostsCount.textContent = myItems.length;
 
   // Render Personal Items directly inside Dashboard
   const userGrid = document.querySelector('#userDashboardItemsGrid');
@@ -1860,13 +1956,20 @@ document.querySelector('#adminReportsTableBody')?.addEventListener('click', asyn
     }
   } else if (action === 'delete-item') {
     if (!confirm('Admin: Delete this report permanently?')) return;
+    const origText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '⏳ Deleting...';
     try {
       await api(`/api/items/${itemId}`, { method: 'DELETE' });
-      notify('Report removed by administrator.');
-      await loadAdminDashboard();
-      await loadItems();
+      items = items.filter((x) => x.id !== itemId);
+      renderItems();
+      syncUserMetrics();
+      notify('✓ Report removed by administrator.');
+      await Promise.all([loadAdminDashboard(), loadItems(), loadSmartMatches()]);
     } catch (err) {
-      notify(err.message);
+      notify(`Could not remove report: ${err.message}`);
+      btn.disabled = false;
+      btn.innerHTML = origText;
     }
   }
 });
