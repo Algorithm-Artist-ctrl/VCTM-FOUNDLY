@@ -1063,6 +1063,126 @@ h1 em { color: var(--coral); }
   flex-wrap: wrap;
 }
 
+.match-reporters-summary-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 11px;
+}
+.match-reporter-box {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.match-reporter-label {
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #64748b;
+}
+.match-reporter-val {
+  font-weight: 700;
+  color: var(--ink);
+}
+
+/* Dedicated Single Smart Match Modal Popup */
+#smartMatchesDialog {
+  border: 0;
+  border-radius: 18px;
+  padding: 0;
+  width: min(1100px, calc(100vw - 48px));
+  max-width: 1100px;
+  max-height: min(90vh, calc(100vh - 48px));
+  box-shadow: 0 25px 60px -12px rgba(15, 23, 42, 0.4);
+  background: #ffffff;
+  overflow: hidden;
+  margin: auto;
+  transform: none !important;
+  transition: none !important;
+  animation: none !important;
+  perspective: none !important;
+}
+
+#smartMatchesDialog[open] {
+  display: block;
+}
+
+.smart-match-modal-box {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  max-height: min(90vh, calc(100vh - 48px));
+  background: #ffffff;
+  overflow: hidden;
+  transform: none !important;
+}
+
+.smart-match-modal-head {
+  padding: 22px 28px 16px;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #ffffff;
+  flex-shrink: 0;
+}
+
+.smart-match-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.smart-matches-modal-content {
+  padding: 24px 28px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  transform: none !important;
+}
+
+.smart-match-modal-footer {
+  padding: 14px 28px;
+  border-top: 1px solid #e2e8f0;
+  background: #f8fafc;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  flex-shrink: 0;
+  margin: 0;
+}
+
+.smart-matches-modal-content .match-pair-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 22px;
+  background: #ffffff;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.03);
+  transform: none !important;
+  transition: box-shadow 0.2s ease;
+}
+
+.smart-matches-modal-content .match-pair-card:hover {
+  transform: none !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+}
+
+#smartMatchesDialog *,
+#smartMatchesDialog *:hover,
+#smartMatchesDialog *:focus,
+#smartMatchesDialog *:active {
+  transform: none !important;
+  perspective: none !important;
+}
+
 /* Explore & Feed Section */
 .explore { padding-top: 20px; }
 .section-heading {
@@ -2123,32 +2243,57 @@ body.mobile-nav-open {
     height: 46px;
   }
 
-  /* Smart Match Comparison Card - Reflow to Stack */
+  /* Smart Match Comparison Card - Reflow to Stack (Zero Rotation) */
   .match-items-comparison {
     grid-template-columns: 1fr;
     display: flex;
     flex-direction: column;
     gap: 12px;
     padding: 14px;
+    transform: none !important;
   }
   .match-item-side {
     width: 100%;
+    transform: none !important;
   }
   .match-swap-icon {
-    text-align: center;
-    transform: rotate(90deg);
-    padding: 2px 0;
-    color: var(--coral);
-    font-size: 18px;
+    display: none;
+    transform: none !important;
   }
   .match-card-actions {
     flex-direction: column;
     gap: 8px;
+    transform: none !important;
   }
   .match-card-actions .button {
     width: 100%;
     justify-content: center;
     min-height: 44px;
+  }
+
+  /* Responsive Smart Match Modal */
+  #smartMatchesDialog {
+    width: calc(100vw - 20px) !important;
+    max-height: calc(100vh - 20px) !important;
+    border-radius: 14px;
+    margin: auto;
+  }
+  .smart-match-modal-box {
+    max-height: calc(100vh - 20px) !important;
+  }
+  .smart-match-modal-head {
+    padding: 16px 14px;
+  }
+  .smart-matches-modal-content {
+    padding: 16px 14px;
+    gap: 16px;
+  }
+  .smart-match-modal-footer {
+    padding: 12px 14px;
+  }
+  .match-reporters-summary-row {
+    grid-template-columns: 1fr;
+    gap: 8px;
   }
 
   /* Auth Dialog Responsive */

@@ -615,9 +615,8 @@ function renderMatchCardHtml(m, idx) {
     <!-- Top Header -->
     <div class="match-card-top-header">
       <div class="match-header-left">
-        <span class="match-ai-badge">⚡ AI SMART MATCH</span>
+        <span class="match-ai-badge">⚡ SMART MATCH #${idx + 1}</span>
         <span class="match-strength-pill ${strengthClass}">${strengthEmoji} ${escapeHtml(strength)}</span>
-        <span class="pill-badge" style="background:#f1f5f9; color:#475569; font-size:10px;">STATUS: ${escapeHtml(m.status || 'Active')}</span>
       </div>
       <div class="match-score-badge-large ${strengthClass}">
         <b>${score}%</b>
@@ -625,7 +624,7 @@ function renderMatchCardHtml(m, idx) {
       </div>
     </div>
 
-    <!-- Items Comparison: Lost vs Found -->
+    <!-- Items Side-by-Side Comparison -->
     <div class="match-items-comparison">
       <!-- Lost Item Side -->
       <div class="match-item-side">
@@ -633,9 +632,9 @@ function renderMatchCardHtml(m, idx) {
         <div class="match-item-details">
           <span class="pill-badge" style="background:#fdeee9; color:var(--coral); font-size:10px;">${isLostOwner ? 'YOUR LOST ITEM' : 'LOST ITEM'}</span>
           <h4>${escapeHtml(l.name || 'Lost Item')}</h4>
-          <p>⌖ ${escapeHtml(l.location || 'Campus')} · ${escapeHtml(l.category || 'Item')}</p>
-          <small class="match-reporter-meta">👤 Lost by: <b>${escapeHtml(lostReporterName)}</b> (${escapeHtml(lostReporterRole)})</small>
-          <small style="color:var(--muted); display:block;">📅 ${l.date || l.item_date || 'Recent'}</small>
+          <p>⌖ <b>Location:</b> ${escapeHtml(l.location || 'Campus')}</p>
+          <p>📁 <b>Category:</b> ${escapeHtml(l.category || 'General')}</p>
+          <p>📅 <b>Date:</b> ${l.date || l.item_date || 'Recent'}</p>
         </div>
       </div>
 
@@ -648,14 +647,14 @@ function renderMatchCardHtml(m, idx) {
         <div class="match-item-details">
           <span class="pill-badge" style="background:#eaf5ef; color:var(--green); font-size:10px;">${!isLostOwner ? 'YOUR FOUND ITEM' : 'FOUND ITEM'}</span>
           <h4>${escapeHtml(f.name || 'Found Item')}</h4>
-          <p>⌖ ${escapeHtml(f.location || 'Campus')} · ${escapeHtml(f.category || 'Item')}</p>
-          <small class="match-reporter-meta">👤 Found by: <b>${escapeHtml(foundReporterName)}</b> (${escapeHtml(foundReporterRole)})</small>
-          <small style="color:var(--muted); display:block;">📅 ${f.date || f.item_date || 'Recent'}</small>
+          <p>⌖ <b>Location:</b> ${escapeHtml(f.location || 'Campus')}</p>
+          <p>📁 <b>Category:</b> ${escapeHtml(f.category || 'General')}</p>
+          <p>📅 <b>Date:</b> ${f.date || f.item_date || 'Recent'}</p>
         </div>
       </div>
     </div>
 
-    <!-- Match Meter & Verified Reasons -->
+    <!-- Match Confidence Bar -->
     <div class="match-meter-box">
       <div class="match-meter-header">
         <span>MATCH CONFIDENCE</span>
@@ -707,16 +706,25 @@ function renderMatchCardHtml(m, idx) {
       ` : '')}
     </div>
 
+    <!-- Reporters Identification Summary Row -->
+    <div class="match-reporters-summary-row">
+      <div class="match-reporter-box">
+        <span class="match-reporter-label">Lost Reported By</span>
+        <span class="match-reporter-val">👤 ${escapeHtml(lostReporterName)} (${escapeHtml(lostReporterRole)})</span>
+      </div>
+      <div class="match-reporter-box">
+        <span class="match-reporter-label">Found Reported By</span>
+        <span class="match-reporter-val">👤 ${escapeHtml(foundReporterName)} (${escapeHtml(foundReporterRole)})</span>
+      </div>
+    </div>
+
     <!-- Actions -->
     <div class="match-card-actions">
       <button type="button" class="button button-secondary button-sm" data-view-match-idx="${idx}">
-        🔍 View Full Details
+        🔍 View Details
       </button>
       <button type="button" class="button button-primary button-sm" data-match-connect-item="${targetItem.id}" data-match-msg="${escapeHtml(autoMsg)}">
         ${btnLabel}
-      </button>
-      <button type="button" class="button button-outline button-sm" data-dismiss-match-id="${m.id || idx}">
-        ✕ Report Incorrect Match
       </button>
     </div>
   </article>
@@ -792,7 +800,7 @@ async function loadSmartMatches() {
             ${emptyHtml}
           </div>
         `;
-        document.querySelector('#btnRefreshMatches')?.addEventListener('click', loadSmartMatches);
+        document.querySelector('#btnRefreshMatches')?.addEventListener('click', () => loadSmartMatches());
       }
 
       if (modalGrid) {
@@ -819,7 +827,7 @@ async function loadSmartMatches() {
           </div>
         </div>
       `;
-      document.querySelector('#btnRefreshMatches')?.addEventListener('click', loadSmartMatches);
+      document.querySelector('#btnRefreshMatches')?.addEventListener('click', () => loadSmartMatches());
     }
 
     if (modalGrid) {
@@ -838,17 +846,50 @@ async function loadSmartMatches() {
   }
 }
 
-async function openSmartMatchesModal() {
+async function handleOpenSmartMatches(e) {
+  if (e) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
   if (!currentUser) {
     openAuthModal('login');
     notify('Please sign in to view your Smart Match alerts.');
     return;
   }
   if (smartMatchesDialog) {
-    smartMatchesDialog.showModal();
+    document.body.classList.add('modal-open');
+    if (!smartMatchesDialog.open) {
+      smartMatchesDialog.showModal();
+    }
   }
   await loadSmartMatches();
 }
+const openSmartMatchesModal = handleOpenSmartMatches;
+
+function closeSmartMatchesPopup() {
+  if (smartMatchesDialog && smartMatchesDialog.open) {
+    smartMatchesDialog.close();
+    document.body.classList.remove('modal-open');
+  }
+}
+
+document.querySelector('#closeSmartMatchesModal')?.addEventListener('click', closeSmartMatchesPopup);
+document.querySelector('#btnCloseSmartMatchesFooter')?.addEventListener('click', closeSmartMatchesPopup);
+document.querySelector('#btnModalRefreshMatches')?.addEventListener('click', () => loadSmartMatches());
+
+smartMatchesDialog?.addEventListener('click', (e) => {
+  const rect = smartMatchesDialog.getBoundingClientRect();
+  const isInDialog = (
+    rect.top <= e.clientY && e.clientY <= rect.top + rect.height &&
+    rect.left <= e.clientX && e.clientX <= rect.left + rect.width
+  );
+  if (!isInDialog) {
+    closeSmartMatchesPopup();
+  }
+});
+smartMatchesDialog?.addEventListener('close', () => {
+  document.body.classList.remove('modal-open');
+});
 
 function openMatchDetail(matchIdx) {
   const m = currentMatchesList[matchIdx];
@@ -991,9 +1032,6 @@ function openMatchDetail(matchIdx) {
 }
 
 document.querySelector('#closeMatchDetail')?.addEventListener('click', () => matchDetailDialog?.close());
-document.querySelector('#closeSmartMatchesModal')?.addEventListener('click', () => smartMatchesDialog?.close());
-document.querySelector('#btnCloseSmartMatchesFooter')?.addEventListener('click', () => smartMatchesDialog?.close());
-document.querySelector('#btnModalRefreshMatches')?.addEventListener('click', () => loadSmartMatches());
 
 // Global click delegation for match connect & detail buttons
 document.addEventListener('click', (e) => {
