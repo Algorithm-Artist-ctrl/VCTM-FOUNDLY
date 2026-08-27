@@ -1035,15 +1035,8 @@ function openMatchDetail(matchIdx) {
 
 document.querySelector('#closeMatchDetail')?.addEventListener('click', () => matchDetailDialog?.close());
 
-// Global click delegation for match connect & detail buttons & top alert cards
+// Global click delegation for match connect & detail buttons
 document.addEventListener('click', (e) => {
-  const topMatchCard = e.target.closest('#btnMetricMatches, .smart-match-alert-card, [data-open-smart-matches]');
-  if (topMatchCard) {
-    e.preventDefault();
-    handleOpenSmartMatches(e);
-    return;
-  }
-
   const connBtn = e.target.closest('[data-match-connect-item]');
   if (connBtn) {
     const itemId = Number(connBtn.dataset.matchConnectItem);
@@ -1660,10 +1653,8 @@ function syncUserMetrics() {
   const myMessagesCount = connections.length;
 
   const metricReportsEl = document.querySelector('#metricMyReportsCount');
-  const metricMatchesEl = document.querySelector('#metricMyMatchesCount');
   const metricMessagesEl = document.querySelector('#metricMyMessagesCount');
   if (metricReportsEl) metricReportsEl.textContent = myActiveCount;
-  if (metricMatchesEl) metricMatchesEl.textContent = myMatchesCount;
   if (metricMessagesEl) metricMessagesEl.textContent = myMessagesCount;
 
   // Show My Posts filter pill in repository
@@ -1849,17 +1840,6 @@ document.querySelector('#btnGuestSignIn')?.addEventListener('click', () => openA
 
 // User Dashboard Metric Cards Clicks
 document.querySelector('#btnMetricReports')?.addEventListener('click', openMyReports);
-
-const btnMetricMatches = document.querySelector('#btnMetricMatches');
-if (btnMetricMatches) {
-  btnMetricMatches.addEventListener('click', handleOpenSmartMatches);
-  btnMetricMatches.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      handleOpenSmartMatches(e);
-    }
-  });
-}
 
 document.querySelectorAll('a[href="#matches"]').forEach((el) => {
   el.addEventListener('click', (e) => {

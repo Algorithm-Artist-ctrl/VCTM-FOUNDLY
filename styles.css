@@ -284,14 +284,6 @@ main {
   border-color: var(--coral);
   box-shadow: 0 8px 20px rgba(235, 111, 92, 0.12);
 }
-.metric-card.smart-match-alert-card {
-  cursor: pointer;
-  user-select: none;
-}
-.metric-card.smart-match-alert-card:focus-visible {
-  outline: 2px solid var(--coral);
-  outline-offset: 2px;
-}
 .metric-icon {
   font-size: 24px;
   width: 44px;
