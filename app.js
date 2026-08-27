@@ -865,6 +865,8 @@ async function handleOpenSmartMatches(e) {
   await loadSmartMatches();
 }
 const openSmartMatchesModal = handleOpenSmartMatches;
+window.handleOpenSmartMatches = handleOpenSmartMatches;
+window.openSmartMatchesModal = handleOpenSmartMatches;
 
 function closeSmartMatchesPopup() {
   if (smartMatchesDialog && smartMatchesDialog.open) {
@@ -1033,8 +1035,15 @@ function openMatchDetail(matchIdx) {
 
 document.querySelector('#closeMatchDetail')?.addEventListener('click', () => matchDetailDialog?.close());
 
-// Global click delegation for match connect & detail buttons
+// Global click delegation for match connect & detail buttons & top alert cards
 document.addEventListener('click', (e) => {
+  const topMatchCard = e.target.closest('#btnMetricMatches, .smart-match-alert-card, [data-open-smart-matches]');
+  if (topMatchCard) {
+    e.preventDefault();
+    handleOpenSmartMatches(e);
+    return;
+  }
+
   const connBtn = e.target.closest('[data-match-connect-item]');
   if (connBtn) {
     const itemId = Number(connBtn.dataset.matchConnectItem);
@@ -1840,18 +1849,29 @@ document.querySelector('#btnGuestSignIn')?.addEventListener('click', () => openA
 
 // User Dashboard Metric Cards Clicks
 document.querySelector('#btnMetricReports')?.addEventListener('click', openMyReports);
-document.querySelector('#btnMetricMatches')?.addEventListener('click', openSmartMatchesModal);
+
+const btnMetricMatches = document.querySelector('#btnMetricMatches');
+if (btnMetricMatches) {
+  btnMetricMatches.addEventListener('click', handleOpenSmartMatches);
+  btnMetricMatches.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      handleOpenSmartMatches(e);
+    }
+  });
+}
+
 document.querySelectorAll('a[href="#matches"]').forEach((el) => {
   el.addEventListener('click', (e) => {
     e.preventDefault();
     closeMobileMenu();
-    openSmartMatchesModal();
+    handleOpenSmartMatches(e);
   });
 });
 document.querySelector('#mobileNavMatches')?.addEventListener('click', (e) => {
   e.preventDefault();
   closeMobileMenu();
-  openSmartMatchesModal();
+  handleOpenSmartMatches(e);
 });
 document.querySelector('#btnMetricMessages')?.addEventListener('click', openConnections);
 document.querySelector('#btnMetricProfile')?.addEventListener('click', openUserProfile);
