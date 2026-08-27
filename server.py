@@ -776,8 +776,20 @@ def calculate_match_score(lost_item: dict, found_item: dict) -> Tuple[int, str, 
     else:
         strength = "Insufficient Data"
 
+    breakdown = {
+        "category": {"score": int(round(cat_score)), "max": int(WEIGHT_CATEGORY)},
+        "title": {"score": int(round(title_score)), "max": int(WEIGHT_ITEM_TITLE)},
+        "description": {"score": int(round(desc_score)), "max": int(WEIGHT_DESCRIPTION)},
+        "color": {"score": int(round(color_score)), "max": int(WEIGHT_COLOR)},
+        "brand": {"score": int(round(brand_score)), "max": int(WEIGHT_BRAND)},
+        "visual": {"score": int(round(visual_score)), "max": int(WEIGHT_VISUAL_FEATURES)},
+        "location": {"score": int(round(loc_score)), "max": int(WEIGHT_LOCATION)},
+        "date": {"score": int(round(date_score)), "max": int(WEIGHT_DATE_PROXIMITY)},
+        "total": {"score": final_score, "max": 100},
+    }
+
     ai_desc = found_ai.get("visual_description") if found_ai else None
-    return final_score, strength, reasons, ai_desc
+    return final_score, strength, reasons, ai_desc, breakdown, found_ai
 
 
 def sync_match_connection(match: dict):
@@ -840,7 +852,7 @@ def get_all_smart_matches():
             if pair_key in seen_pairs:
                 continue
 
-            score, strength, reasons, ai_summary = calculate_match_score(l, f)
+            score, strength, reasons, ai_summary, breakdown, found_ai = calculate_match_score(l, f)
             if score >= THRESHOLD_MIN_DISPLAY:
                 seen_pairs.add(pair_key)
                 match_obj = {
@@ -850,9 +862,22 @@ def get_all_smart_matches():
                     "match_strength": strength,
                     "match_reasons": reasons,
                     "reasons": reasons,
+                    "score_breakdown": breakdown,
+                    "gemini_analysis": found_ai,
                     "ai_visual_description": ai_summary,
                     "lost_item": l,
                     "found_item": f,
+                    "lost_reporter": {
+                        "name": l.get("owner_name") or "Campus Member",
+                        "role": l.get("owner_role") or "Student",
+                        "email": l.get("owner_email") or ""
+                    },
+                    "found_reporter": {
+                        "name": f.get("owner_name") or "Campus Finder",
+                        "role": f.get("owner_role") or "Student",
+                        "email": f.get("owner_email") or ""
+                    },
+                    "status": "Active"
                 }
                 matches.append(match_obj)
                 sync_match_connection(match_obj)
@@ -943,16 +968,41 @@ class FoundlyHandler(SimpleHTTPRequestHandler):
                     self.send_json({"user": None, "pending_count": 0, "matches_count": 0})
                     return
                 conns = db.get_connections(user["id"])
-                pending = sum(1 for c in conns if c["recipient_id"] == user["id"] and c["status"] in ("Pending", "Matched"))
+                pending = sum(1 for c in conns if str(c.get("recipient_id")) == str(user["id"]) and c.get("status") in ("Pending", "Matched"))
                 all_matches = get_all_smart_matches()
-                user_matches = sum(1 for m in all_matches if m["lost_item"]["owner_id"] == user["id"] or m["found_item"]["owner_id"] == user["id"])
+                user_matches = sum(
+                    1 for m in all_matches
+                    if str(m["lost_item"].get("owner_id")) == str(user["id"]) or
+                       str(m["found_item"].get("owner_id")) == str(user["id"]) or
+                       (user.get("email") and (
+                           str(m["lost_item"].get("owner_email", "")).strip().lower() == str(user.get("email", "")).strip().lower() or
+                           str(m["found_item"].get("owner_email", "")).strip().lower() == str(user.get("email", "")).strip().lower()
+                       ))
+                )
                 self.send_json({"user": user, "pending_count": pending, "matches_count": user_matches})
                 return
 
             # 2. Smart Matches Hub
-            if path == "/api/matches":
-                matches = get_all_smart_matches()
-                self.send_json({"matches": matches, "count": len(matches)})
+            if path in ("/api/matches", "/api/smart-matches"):
+                user = self.get_current_user()
+                all_matches = get_all_smart_matches()
+                if user and user.get("role") != "admin":
+                    user_matches = [
+                        m for m in all_matches
+                        if str(m["lost_item"].get("owner_id")) == str(user["id"]) or
+                           str(m["found_item"].get("owner_id")) == str(user["id"]) or
+                           (user.get("email") and (
+                               str(m["lost_item"].get("owner_email", "")).strip().lower() == str(user.get("email", "")).strip().lower() or
+                               str(m["found_item"].get("owner_email", "")).strip().lower() == str(user.get("email", "")).strip().lower()
+                           ))
+                    ]
+                else:
+                    user_matches = all_matches
+                self.send_json({
+                    "matches": user_matches,
+                    "count": len(user_matches),
+                    "total_matches": len(all_matches)
+                })
                 return
 
             # 3. Items Feed

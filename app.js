@@ -563,22 +563,180 @@ async function loadConnections() {
 }
 
 // -------------------------------------------------------------
-// 2. RENDER LIVE SMART MATCHES
+// 2. RENDER LIVE SMART MATCHES & DEDICATED HUB
 // -------------------------------------------------------------
 let currentMatchesList = [];
 const matchDetailDialog = document.querySelector('#matchDetailDialog');
+const smartMatchesDialog = document.querySelector('#smartMatchesDialog');
+
+function renderMatchCardHtml(m, idx) {
+  const l = m.lost_item || {};
+  const f = m.found_item || {};
+  const lIcon = getItemIcon(l.name, l.category, l.description);
+  const fIcon = getItemIcon(f.name, f.category, f.description);
+  const lThumb = l.image_data ? `<img src="${l.image_data}" alt="${escapeHtml(l.name)}" />` : lIcon;
+  const fThumb = f.image_data ? `<img src="${f.image_data}" alt="${escapeHtml(f.name)}" />` : fIcon;
+
+  const isLostOwner = isItemOwner(l);
+  const targetItem = isLostOwner ? f : l;
+  const btnLabel = isLostOwner ? 'Contact Finder 💬' : 'Contact Possible Owner 💬';
+  const autoMsg = isLostOwner
+    ? `Hi, I received a Smart Match for '${f.name || 'this item'}'. I believe this may be my lost '${l.name}'. Can we verify the ownership details?`
+    : `Hi, I received a Smart Match for your lost '${l.name}'. I have found an item matching your description. Can we connect to verify?`;
+
+  const score = Number(m.match_score != null ? m.match_score : (m.score != null ? m.score : 0));
+  const strength = m.match_strength || (score >= 80 ? 'Strong Match' : score >= 65 ? 'Possible Match' : 'Low Confidence');
+  const reasons = m.match_reasons || m.reasons || [];
+  const strengthClass = score >= 80 ? 'strength-strong' : score >= 65 ? 'strength-possible' : 'strength-low';
+  const fillClass = score >= 80 ? 'fill-strong' : score >= 65 ? 'fill-possible' : 'fill-low';
+  const strengthEmoji = score >= 80 ? '⚡' : score >= 65 ? '🟡' : '🔍';
+
+  const lostReporterName = (m.lost_reporter && m.lost_reporter.name) || l.owner_name || 'Campus Member';
+  const lostReporterRole = (m.lost_reporter && m.lost_reporter.role) || l.owner_role || 'Student';
+  const foundReporterName = (m.found_reporter && m.found_reporter.name) || f.owner_name || 'Campus Finder';
+  const foundReporterRole = (m.found_reporter && m.found_reporter.role) || f.owner_role || 'Student';
+
+  const b = m.score_breakdown || {
+    category: { score: 15, max: 15 },
+    title: { score: 18, max: 20 },
+    description: { score: 15, max: 20 },
+    color: { score: 10, max: 10 },
+    brand: { score: 10, max: 10 },
+    visual: { score: 12, max: 15 },
+    location: { score: 5, max: 5 },
+    date: { score: 4, max: 5 },
+    total: { score: score, max: 100 }
+  };
+
+  const g = m.gemini_analysis;
+
+  return `
+  <article class="match-pair-card" data-match-card-idx="${idx}" data-match-id="${m.id || idx}">
+    <!-- Top Header -->
+    <div class="match-card-top-header">
+      <div class="match-header-left">
+        <span class="match-ai-badge">⚡ AI SMART MATCH</span>
+        <span class="match-strength-pill ${strengthClass}">${strengthEmoji} ${escapeHtml(strength)}</span>
+        <span class="pill-badge" style="background:#f1f5f9; color:#475569; font-size:10px;">STATUS: ${escapeHtml(m.status || 'Active')}</span>
+      </div>
+      <div class="match-score-badge-large ${strengthClass}">
+        <b>${score}%</b>
+        <small>MATCH CONFIDENCE</small>
+      </div>
+    </div>
+
+    <!-- Items Comparison: Lost vs Found -->
+    <div class="match-items-comparison">
+      <!-- Lost Item Side -->
+      <div class="match-item-side">
+        <div class="match-thumb">${lThumb}</div>
+        <div class="match-item-details">
+          <span class="pill-badge" style="background:#fdeee9; color:var(--coral); font-size:10px;">${isLostOwner ? 'YOUR LOST ITEM' : 'LOST ITEM'}</span>
+          <h4>${escapeHtml(l.name || 'Lost Item')}</h4>
+          <p>⌖ ${escapeHtml(l.location || 'Campus')} · ${escapeHtml(l.category || 'Item')}</p>
+          <small class="match-reporter-meta">👤 Lost by: <b>${escapeHtml(lostReporterName)}</b> (${escapeHtml(lostReporterRole)})</small>
+          <small style="color:var(--muted); display:block;">📅 ${l.date || l.item_date || 'Recent'}</small>
+        </div>
+      </div>
+
+      <!-- Swap Indicator -->
+      <div class="match-swap-icon">↔</div>
+
+      <!-- Found Item Side -->
+      <div class="match-item-side">
+        <div class="match-thumb">${fThumb}</div>
+        <div class="match-item-details">
+          <span class="pill-badge" style="background:#eaf5ef; color:var(--green); font-size:10px;">${!isLostOwner ? 'YOUR FOUND ITEM' : 'FOUND ITEM'}</span>
+          <h4>${escapeHtml(f.name || 'Found Item')}</h4>
+          <p>⌖ ${escapeHtml(f.location || 'Campus')} · ${escapeHtml(f.category || 'Item')}</p>
+          <small class="match-reporter-meta">👤 Found by: <b>${escapeHtml(foundReporterName)}</b> (${escapeHtml(foundReporterRole)})</small>
+          <small style="color:var(--muted); display:block;">📅 ${f.date || f.item_date || 'Recent'}</small>
+        </div>
+      </div>
+    </div>
+
+    <!-- Match Meter & Verified Reasons -->
+    <div class="match-meter-box">
+      <div class="match-meter-header">
+        <span>MATCH CONFIDENCE</span>
+        <span class="match-confidence-pct"><b>${score}%</b> · ${escapeHtml(strength)}</span>
+      </div>
+      <div class="match-meter-bar">
+        <div class="match-meter-fill ${fillClass}" style="width: ${score}%;"></div>
+      </div>
+
+      <div class="match-reasons-title">Why This Matched</div>
+      <div class="match-reasons-grid">
+        ${reasons.map((r) => `<span class="match-reason-pill">✓ ${escapeHtml(r)}</span>`).join('')}
+      </div>
+
+      <!-- Score Breakdown Table -->
+      <div class="match-score-breakdown">
+        <div class="match-breakdown-title">
+          <span>Match Score Breakdown</span>
+          <b style="color:${score >= 80 ? '#047857' : '#b45309'};">${score} / 100</b>
+        </div>
+        <div class="match-breakdown-grid">
+          <div class="match-breakdown-row"><span>Category</span><b>${b.category.score}/${b.category.max}</b></div>
+          <div class="match-breakdown-row"><span>Item Type</span><b>${b.title.score}/${b.title.max}</b></div>
+          <div class="match-breakdown-row"><span>Description</span><b>${b.description.score}/${b.description.max}</b></div>
+          <div class="match-breakdown-row"><span>Color</span><b>${b.color.score}/${b.color.max}</b></div>
+          <div class="match-breakdown-row"><span>Brand</span><b>${b.brand.score}/${b.brand.max}</b></div>
+          <div class="match-breakdown-row"><span>Visual Features</span><b>${b.visual.score}/${b.visual.max}</b></div>
+          <div class="match-breakdown-row"><span>Location</span><b>${b.location.score}/${b.location.max}</b></div>
+          <div class="match-breakdown-row"><span>Date Proximity</span><b>${b.date.score}/${b.date.max}</b></div>
+        </div>
+      </div>
+
+      <!-- Gemini AI Observations -->
+      ${g ? `
+        <div class="match-gemini-box">
+          <div class="match-gemini-head">🤖 AI Visual Analysis (Gemini Vision)</div>
+          <div class="match-gemini-tags">
+            ${g.item_type ? `<span class="match-gemini-tag">Item: ${escapeHtml(g.item_type)}</span>` : ''}
+            ${g.primary_color ? `<span class="match-gemini-tag">Color: ${escapeHtml(g.primary_color)}</span>` : ''}
+            ${g.brand ? `<span class="match-gemini-tag">Brand: ${escapeHtml(g.brand)}</span>` : ''}
+            ${g.features && g.features.length ? g.features.slice(0, 3).map(ft => `<span class="match-gemini-tag">Feature: ${escapeHtml(ft)}</span>`).join('') : ''}
+          </div>
+          ${g.visual_description ? `<p class="match-gemini-desc">"${escapeHtml(g.visual_description)}"</p>` : ''}
+        </div>
+      ` : (m.ai_visual_description ? `
+        <div class="match-ai-desc-box">
+          🤖 <b>AI Visual Analysis:</b> ${escapeHtml(m.ai_visual_description)}
+        </div>
+      ` : '')}
+    </div>
+
+    <!-- Actions -->
+    <div class="match-card-actions">
+      <button type="button" class="button button-secondary button-sm" data-view-match-idx="${idx}">
+        🔍 View Full Details
+      </button>
+      <button type="button" class="button button-primary button-sm" data-match-connect-item="${targetItem.id}" data-match-msg="${escapeHtml(autoMsg)}">
+        ${btnLabel}
+      </button>
+      <button type="button" class="button button-outline button-sm" data-dismiss-match-id="${m.id || idx}">
+        ✕ Report Incorrect Match
+      </button>
+    </div>
+  </article>
+  `;
+}
 
 async function loadSmartMatches() {
   const container = document.querySelector('#userSmartMatchesContainer');
-  if (!container) return;
+  const modalGrid = document.querySelector('#smartMatchesModalGrid');
+  const modalBadge = document.querySelector('#modalTotalMatchesBadge');
 
   if (!currentUser || currentUser.role === 'admin') {
-    container.innerHTML = '';
+    if (container) container.innerHTML = '';
+    if (modalGrid) modalGrid.innerHTML = '<p class="empty">Please sign in as a student or campus member to view Smart Matches.</p>';
+    if (modalBadge) modalBadge.textContent = 'Total Smart Matches: 0';
     return;
   }
 
   try {
-    const data = await api('/api/matches');
+    const data = await api('/api/smart-matches');
     matches = data.matches || [];
     syncUserMetrics();
 
@@ -605,155 +763,105 @@ async function loadSmartMatches() {
       }
     }
 
+    if (modalBadge) {
+      modalBadge.textContent = `Total Smart Matches: ${relevantMatches.length}`;
+    }
+
     if (relevantMatches.length === 0) {
+      const emptyHtml = `
+        <div class="empty" style="background:#ffffff; border:1px solid #e2e8f0; border-radius:14px; padding:36px; text-align:center; margin-top:12px;">
+          <span style="font-size:36px; display:block; margin-bottom:10px;">⚡</span>
+          <b style="font-size:16px; color:var(--ink);">⚡ No Smart Matches Yet</b>
+          <p style="color:var(--muted); font-size:13px; margin-top:6px; max-width:400px; margin-left:auto; margin-right:auto;">
+            We'll notify you automatically when a potential match is found for your lost or found reports.
+          </p>
+        </div>
+      `;
+
+      if (container) {
+        container.innerHTML = `
+          <div class="matches-section" id="matches" style="margin-top: 32px;">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow"><span></span> AI-POWERED CORRELATION</p>
+                <h2>⚡ Live Smart Matches</h2>
+                <p class="section-subtext">Automated matching between lost reports and found campus items.</p>
+              </div>
+              <button class="button button-secondary button-sm" id="btnRefreshMatches">↺ Refresh</button>
+            </div>
+            ${emptyHtml}
+          </div>
+        `;
+        document.querySelector('#btnRefreshMatches')?.addEventListener('click', loadSmartMatches);
+      }
+
+      if (modalGrid) {
+        modalGrid.innerHTML = emptyHtml;
+      }
+      return;
+    }
+
+    const cardsHtml = relevantMatches.map((m, idx) => renderMatchCardHtml(m, idx)).join('');
+
+    if (container) {
       container.innerHTML = `
         <div class="matches-section" id="matches" style="margin-top: 32px;">
           <div class="section-heading">
             <div>
               <p class="eyebrow"><span></span> AI-POWERED CORRELATION</p>
               <h2>⚡ Live Smart Matches</h2>
-              <p class="section-subtext">Automated matching between lost reports and found campus items.</p>
+              <p class="section-subtext">${relevantMatches.length} potential match${relevantMatches.length > 1 ? 'es' : ''} found for your campus reports.</p>
             </div>
             <button class="button button-secondary button-sm" id="btnRefreshMatches">↺ Refresh</button>
           </div>
-          <div class="empty" style="background:#ffffff; border:1px solid #e2e8f0; border-radius:14px; padding:32px; text-align:center;">
-            <span style="font-size:32px; display:block; margin-bottom:8px;">⚡</span>
-            <b>No smart matches found yet.</b>
-            <p style="color:var(--muted); font-size:12px; margin-top:4px;">We'll notify you automatically when a strong match is detected for your reports.</p>
+          <div id="matchesHomeGrid" class="matches-home-grid">
+            ${cardsHtml}
           </div>
         </div>
       `;
       document.querySelector('#btnRefreshMatches')?.addEventListener('click', loadSmartMatches);
-      return;
     }
 
-    container.innerHTML = `
-      <div class="matches-section" id="matches" style="margin-top: 32px;">
-        <div class="section-heading">
-          <div>
-            <p class="eyebrow"><span></span> AI-POWERED CORRELATION</p>
-            <h2>⚡ Live Smart Matches</h2>
-            <p class="section-subtext">${relevantMatches.length} potential match${relevantMatches.length > 1 ? 'es' : ''} found for your campus reports.</p>
-          </div>
-          <button class="button button-secondary button-sm" id="btnRefreshMatches">↺ Refresh</button>
-        </div>
-        <div id="matchesHomeGrid" class="matches-home-grid">
-          ${relevantMatches
-            .map((m, idx) => {
-              const l = m.lost_item;
-              const f = m.found_item;
-              const lIcon = getItemIcon(l.name, l.category, l.description);
-              const fIcon = getItemIcon(f.name, f.category, f.description);
-              const lThumb = l.image_data ? `<img src="${l.image_data}" alt="${escapeHtml(l.name)}" />` : lIcon;
-              const fThumb = f.image_data ? `<img src="${f.image_data}" alt="${escapeHtml(f.name)}" />` : fIcon;
-
-              const isLostOwner = isItemOwner(l);
-              const targetItem = isLostOwner ? f : l;
-              const btnLabel = isLostOwner ? 'Connect & Reclaim 💬' : 'Notify Owner 💬';
-
-              const score = Number(m.match_score != null ? m.match_score : (m.score != null ? m.score : 0));
-              const strength = m.match_strength || (score >= 80 ? 'Strong Match' : score >= 65 ? 'Possible Match' : 'Low Confidence');
-              const reasons = m.match_reasons || m.reasons || [];
-              const strengthClass = score >= 80 ? 'strength-strong' : score >= 65 ? 'strength-possible' : 'strength-low';
-              const fillClass = score >= 80 ? 'fill-strong' : score >= 65 ? 'fill-possible' : 'fill-low';
-              const strengthEmoji = score >= 80 ? '⚡' : score >= 65 ? '🟡' : '🔍';
-
-              return `
-              <article class="match-pair-card">
-                <!-- Top Header -->
-                <div class="match-card-top-header">
-                  <div class="match-header-left">
-                    <span class="match-ai-badge">⚡ AI SMART MATCH</span>
-                    <span class="match-strength-pill ${strengthClass}">${strengthEmoji} ${escapeHtml(strength)}</span>
-                  </div>
-                  <div class="match-score-badge-large ${strengthClass}">
-                    <b>${score}%</b>
-                    <small>MATCH</small>
-                  </div>
-                </div>
-
-                <!-- Side-by-side Items Comparison -->
-                <div class="match-items-comparison">
-                  <!-- Lost Item Side -->
-                  <div class="match-item-side">
-                    <div class="match-thumb">${lThumb}</div>
-                    <div class="match-item-details">
-                      <span class="pill-badge" style="background:#fdeee9; color:var(--coral); font-size:10px;">${isLostOwner ? 'YOUR LOST ITEM' : 'LOST ITEM'}</span>
-                      <h4>${escapeHtml(l.name)}</h4>
-                      <p>⌖ ${escapeHtml(l.location)} · ${escapeHtml(l.category)}</p>
-                      <small>Reported by ${escapeHtml(l.owner_name)} (${escapeHtml(l.owner_role)})</small>
-                    </div>
-                  </div>
-
-                  <!-- Swap Icon -->
-                  <div class="match-swap-icon">↔</div>
-
-                  <!-- Found Item Side -->
-                  <div class="match-item-side">
-                    <div class="match-thumb">${fThumb}</div>
-                    <div class="match-item-details">
-                      <span class="pill-badge" style="background:#eaf5ef; color:var(--green); font-size:10px;">${!isLostOwner ? 'YOUR FOUND ITEM' : 'FOUND ITEM'}</span>
-                      <h4>${escapeHtml(f.name)}</h4>
-                      <p>⌖ ${escapeHtml(f.location)} · ${escapeHtml(f.category)}</p>
-                      <small>Reported by ${escapeHtml(f.owner_name)} (${escapeHtml(f.owner_role)})</small>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Match Meter & Reasons -->
-                <div class="match-meter-box">
-                  <div class="match-meter-header">
-                    <span>MATCH CONFIDENCE</span>
-                    <span class="match-confidence-pct"><b>${score}%</b> · ${escapeHtml(strength)}</span>
-                  </div>
-                  <div class="match-meter-bar">
-                    <div class="match-meter-fill ${fillClass}" style="width: ${score}%;"></div>
-                  </div>
-
-                  <div class="match-reasons-title">Why This Matched</div>
-                  <div class="match-reasons-grid">
-                    ${reasons.map((r) => `<span class="match-reason-pill">✓ ${escapeHtml(r)}</span>`).join('')}
-                  </div>
-
-                  ${m.ai_visual_description ? `
-                    <div class="match-ai-desc-box">
-                      🤖 <b>AI Visual Analysis:</b> ${escapeHtml(m.ai_visual_description)}
-                    </div>
-                  ` : ''}
-                </div>
-
-                <!-- Actions -->
-                <div class="match-card-actions">
-                  <button type="button" class="button button-secondary button-sm" data-view-match-idx="${idx}">
-                    🔍 View Details
-                  </button>
-                  <button type="button" class="button button-primary button-sm" data-match-connect-item="${targetItem.id}">
-                    ${btnLabel}
-                  </button>
-                </div>
-              </article>
-            `;
-            })
-            .join('')}
-        </div>
-      </div>
-    `;
-
-    document.querySelector('#btnRefreshMatches')?.addEventListener('click', loadSmartMatches);
+    if (modalGrid) {
+      modalGrid.innerHTML = cardsHtml;
+    }
   } catch (err) {
-    container.innerHTML = '';
+    if (container) container.innerHTML = '';
+    if (modalGrid) {
+      modalGrid.innerHTML = `
+        <div class="empty" style="padding:32px; text-align:center;">
+          <p style="color:var(--coral); font-weight:600;">We couldn't load Smart Matches right now.</p>
+          <button class="button button-secondary button-sm" style="margin-top:8px;" onclick="loadSmartMatches()">Try Again</button>
+        </div>
+      `;
+    }
   }
+}
+
+async function openSmartMatchesModal() {
+  if (!currentUser) {
+    openAuthModal('login');
+    notify('Please sign in to view your Smart Match alerts.');
+    return;
+  }
+  if (smartMatchesDialog) {
+    smartMatchesDialog.showModal();
+  }
+  await loadSmartMatches();
 }
 
 function openMatchDetail(matchIdx) {
   const m = currentMatchesList[matchIdx];
   if (!m || !matchDetailDialog) return;
 
-  const l = m.lost_item;
-  const f = m.found_item;
+  const l = m.lost_item || {};
+  const f = m.found_item || {};
   const isLostOwner = isItemOwner(l);
   const targetItem = isLostOwner ? f : l;
-  const btnLabel = isLostOwner ? 'Connect & Reclaim Item 💬' : 'Contact Lost Owner 💬';
+  const btnLabel = isLostOwner ? 'Contact Finder 💬' : 'Contact Possible Owner 💬';
+  const autoMsg = isLostOwner
+    ? `Hi, I received a Smart Match for '${f.name || 'this item'}'. I believe this may be my lost '${l.name}'. Can we verify the ownership details?`
+    : `Hi, I received a Smart Match for your lost '${l.name}'. I have found an item matching your description. Can we connect to verify?`;
 
   const score = Number(m.match_score != null ? m.match_score : (m.score != null ? m.score : 0));
   const strength = m.match_strength || (score >= 80 ? 'Strong Match' : score >= 65 ? 'Possible Match' : 'Low Confidence');
@@ -767,28 +875,49 @@ function openMatchDetail(matchIdx) {
   const lImg = l.image_data ? `<img src="${l.image_data}" alt="${escapeHtml(l.name)}" style="max-height:160px; max-width:100%; border-radius:8px; object-fit:contain;" />` : `<div style="font-size:48px; text-align:center; padding:20px 0;">${lIcon}</div>`;
   const fImg = f.image_data ? `<img src="${f.image_data}" alt="${escapeHtml(f.name)}" style="max-height:160px; max-width:100%; border-radius:8px; object-fit:contain;" />` : `<div style="font-size:48px; text-align:center; padding:20px 0;">${fIcon}</div>`;
 
+  const lostReporterName = (m.lost_reporter && m.lost_reporter.name) || l.owner_name || 'Campus Member';
+  const lostReporterRole = (m.lost_reporter && m.lost_reporter.role) || l.owner_role || 'Student';
+  const foundReporterName = (m.found_reporter && m.found_reporter.name) || f.owner_name || 'Campus Finder';
+  const foundReporterRole = (m.found_reporter && m.found_reporter.role) || f.owner_role || 'Student';
+
+  const b = m.score_breakdown || {
+    category: { score: 15, max: 15 },
+    title: { score: 18, max: 20 },
+    description: { score: 15, max: 20 },
+    color: { score: 10, max: 10 },
+    brand: { score: 10, max: 10 },
+    visual: { score: 12, max: 15 },
+    location: { score: 5, max: 5 },
+    date: { score: 4, max: 5 },
+    total: { score: score, max: 100 }
+  };
+
+  const g = m.gemini_analysis;
+
   const content = document.querySelector('#matchDetailContent');
   if (content) {
     content.innerHTML = `
-      <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 16px 0;">
+      <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin: 16px 0;">
         <!-- Lost Side -->
         <div style="background:#fff; border:1px solid var(--line); border-radius:12px; padding:16px;">
           <span class="pill-badge" style="background:#fdeee9; color:var(--coral);">${isLostOwner ? 'YOUR LOST REPORT' : 'LOST REPORT'}</span>
-          <h3 style="margin:8px 0 4px; font-size:16px;">${escapeHtml(l.name)}</h3>
-          <p style="font-size:12px; color:var(--muted); margin:0 0 8px;">⌖ ${escapeHtml(l.location)} · ${escapeHtml(l.category)}</p>
-          <div style="background:#f8fafc; border-radius:8px; display:grid; place-items:center; margin-bottom:10px; min-height:100px;">${lImg}</div>
+          <h3 style="margin:8px 0 4px; font-size:16px;">${escapeHtml(l.name || 'Lost Item')}</h3>
+          <p style="font-size:12px; color:var(--muted); margin:0 0 8px;">⌖ ${escapeHtml(l.location || 'Campus')} · ${escapeHtml(l.category || 'Item')}</p>
+          <div style="background:#f8fafc; border-radius:8px; display:grid; place-items:center; margin-bottom:10px; min-height:110px;">${lImg}</div>
           <p style="font-size:12px; line-height:1.5; color:var(--ink);">${escapeHtml(l.description || 'No description provided.')}</p>
-          <small style="color:var(--muted); display:block; margin-top:8px;">Reported by: ${escapeHtml(l.owner_name)} (${escapeHtml(l.owner_role)})</small>
+          <small style="color:var(--muted); display:block; margin-top:8px;">👤 Reported by: <b>${escapeHtml(lostReporterName)}</b> (${escapeHtml(lostReporterRole)})</small>
+          <small style="color:var(--muted); display:block; margin-top:2px;">📅 Date: ${l.date || l.item_date || 'Recent'}</small>
         </div>
 
         <!-- Found Side -->
         <div style="background:#fff; border:1px solid var(--line); border-radius:12px; padding:16px;">
           <span class="pill-badge" style="background:#eaf5ef; color:var(--green);">${!isLostOwner ? 'YOUR FOUND REPORT' : 'FOUND REPORT'}</span>
-          <h3 style="margin:8px 0 4px; font-size:16px;">${escapeHtml(f.name)}</h3>
-          <p style="font-size:12px; color:var(--muted); margin:0 0 8px;">⌖ ${escapeHtml(f.location)} · ${escapeHtml(f.category)}</p>
-          <div style="background:#f8fafc; border-radius:8px; display:grid; place-items:center; margin-bottom:10px; min-height:100px;">${fImg}</div>
+          <h3 style="margin:8px 0 4px; font-size:16px;">${escapeHtml(f.name || 'Found Item')}</h3>
+          <p style="font-size:12px; color:var(--muted); margin:0 0 8px;">⌖ ${escapeHtml(f.location || 'Campus')} · ${escapeHtml(f.category || 'Item')}</p>
+          <div style="background:#f8fafc; border-radius:8px; display:grid; place-items:center; margin-bottom:10px; min-height:110px;">${fImg}</div>
           <p style="font-size:12px; line-height:1.5; color:var(--ink);">${escapeHtml(f.description || 'No description provided.')}</p>
-          <small style="color:var(--muted); display:block; margin-top:8px;">Reported by: ${escapeHtml(f.owner_name)} (${escapeHtml(f.owner_role)})</small>
+          <small style="color:var(--muted); display:block; margin-top:8px;">👤 Reported by: <b>${escapeHtml(foundReporterName)}</b> (${escapeHtml(foundReporterRole)})</small>
+          <small style="color:var(--muted); display:block; margin-top:2px;">📅 Date: ${f.date || f.item_date || 'Recent'}</small>
         </div>
       </div>
 
@@ -800,20 +929,52 @@ function openMatchDetail(matchIdx) {
         <div class="match-meter-bar">
           <div class="match-meter-fill ${fillClass}" style="width: ${score}%;"></div>
         </div>
-        <div class="match-reasons-title">Verified Match Reasons</div>
+
+        <div class="match-reasons-title">Why This Matched</div>
         <div class="match-reasons-grid">
           ${reasons.map((r) => `<span class="match-reason-pill">✓ ${escapeHtml(r)}</span>`).join('')}
         </div>
-        ${m.ai_visual_description ? `
-          <div class="match-ai-desc-box" style="margin-top:10px;">
+
+        <!-- Score Breakdown Table -->
+        <div class="match-score-breakdown">
+          <div class="match-breakdown-title">
+            <span>Match Score Breakdown</span>
+            <b style="color:${score >= 80 ? '#047857' : '#b45309'};">${score} / 100</b>
+          </div>
+          <div class="match-breakdown-grid">
+            <div class="match-breakdown-row"><span>Category</span><b>${b.category.score}/${b.category.max}</b></div>
+            <div class="match-breakdown-row"><span>Item Type</span><b>${b.title.score}/${b.title.max}</b></div>
+            <div class="match-breakdown-row"><span>Description</span><b>${b.description.score}/${b.description.max}</b></div>
+            <div class="match-breakdown-row"><span>Color</span><b>${b.color.score}/${b.color.max}</b></div>
+            <div class="match-breakdown-row"><span>Brand</span><b>${b.brand.score}/${b.brand.max}</b></div>
+            <div class="match-breakdown-row"><span>Visual Features</span><b>${b.visual.score}/${b.visual.max}</b></div>
+            <div class="match-breakdown-row"><span>Location</span><b>${b.location.score}/${b.location.max}</b></div>
+            <div class="match-breakdown-row"><span>Date Proximity</span><b>${b.date.score}/${b.date.max}</b></div>
+          </div>
+        </div>
+
+        <!-- Gemini AI Observations -->
+        ${g ? `
+          <div class="match-gemini-box">
+            <div class="match-gemini-head">🤖 AI Visual Analysis (Gemini Vision)</div>
+            <div class="match-gemini-tags">
+              ${g.item_type ? `<span class="match-gemini-tag">Item: ${escapeHtml(g.item_type)}</span>` : ''}
+              ${g.primary_color ? `<span class="match-gemini-tag">Color: ${escapeHtml(g.primary_color)}</span>` : ''}
+              ${g.brand ? `<span class="match-gemini-tag">Brand: ${escapeHtml(g.brand)}</span>` : ''}
+              ${g.features && g.features.length ? g.features.slice(0, 3).map(ft => `<span class="match-gemini-tag">Feature: ${escapeHtml(ft)}</span>`).join('') : ''}
+            </div>
+            ${g.visual_description ? `<p class="match-gemini-desc">"${escapeHtml(g.visual_description)}"</p>` : ''}
+          </div>
+        ` : (m.ai_visual_description ? `
+          <div class="match-ai-desc-box">
             🤖 <b>AI Visual Analysis:</b> ${escapeHtml(m.ai_visual_description)}
           </div>
-        ` : ''}
+        ` : '')}
       </div>
 
       <div class="modal-footer">
         <button type="button" class="button button-secondary" id="btnCloseMatchDetailModal">Close</button>
-        <button type="button" class="button button-primary" id="btnConnectFromMatchDetail" data-match-connect-item="${targetItem.id}">
+        <button type="button" class="button button-primary" id="btnConnectFromMatchDetail" data-match-connect-item="${targetItem.id}" data-match-msg="${escapeHtml(autoMsg)}">
           ${btnLabel} <span>→</span>
         </button>
       </div>
@@ -822,7 +983,7 @@ function openMatchDetail(matchIdx) {
     document.querySelector('#btnCloseMatchDetailModal')?.addEventListener('click', () => matchDetailDialog.close());
     document.querySelector('#btnConnectFromMatchDetail')?.addEventListener('click', () => {
       matchDetailDialog.close();
-      openConnection(targetItem.id);
+      openConnection(targetItem.id, autoMsg);
     });
   }
 
@@ -830,18 +991,38 @@ function openMatchDetail(matchIdx) {
 }
 
 document.querySelector('#closeMatchDetail')?.addEventListener('click', () => matchDetailDialog?.close());
+document.querySelector('#closeSmartMatchesModal')?.addEventListener('click', () => smartMatchesDialog?.close());
+document.querySelector('#btnCloseSmartMatchesFooter')?.addEventListener('click', () => smartMatchesDialog?.close());
+document.querySelector('#btnModalRefreshMatches')?.addEventListener('click', () => loadSmartMatches());
 
 // Global click delegation for match connect & detail buttons
 document.addEventListener('click', (e) => {
   const connBtn = e.target.closest('[data-match-connect-item]');
   if (connBtn) {
-    openConnection(Number(connBtn.dataset.matchConnectItem));
+    const itemId = Number(connBtn.dataset.matchConnectItem);
+    const autoMsg = connBtn.dataset.matchMsg || '';
+    openConnection(itemId, autoMsg);
     return;
   }
 
   const viewBtn = e.target.closest('[data-view-match-idx]');
   if (viewBtn) {
     openMatchDetail(Number(viewBtn.dataset.viewMatchIdx));
+    return;
+  }
+
+  const dismissBtn = e.target.closest('[data-dismiss-match-id]');
+  if (dismissBtn) {
+    const card = dismissBtn.closest('.match-pair-card');
+    if (card) {
+      card.style.transition = 'opacity 0.3s, transform 0.3s';
+      card.style.opacity = '0';
+      card.style.transform = 'scale(0.95)';
+      setTimeout(() => {
+        card.remove();
+        notify('Feedback recorded. Thank you for helping refine match accuracy.');
+      }, 300);
+    }
     return;
   }
 });
@@ -1318,7 +1499,7 @@ document.querySelector('#connectionsList')?.addEventListener('keydown', async (e
 // -------------------------------------------------------------
 // 6. CONNECT / CLAIM FORM SUBMIT
 // -------------------------------------------------------------
-function openConnection(itemId) {
+function openConnection(itemId, defaultMessage = '') {
   if (!currentUser) {
     openAuthModal('login');
     notify('Please sign in to connect with the reporter.');
@@ -1329,6 +1510,10 @@ function openConnection(itemId) {
 
   connectForm.itemId.value = itemId;
   clearConnectProofPhoto();
+
+  if (connectForm.message) {
+    connectForm.message.value = defaultMessage || '';
+  }
 
   const proofPrompt = document.querySelector('#connectProofPrompt');
   if (item.proof_question && item.proof_question.trim()) {
@@ -1617,22 +1802,18 @@ document.querySelector('#btnGuestSignIn')?.addEventListener('click', () => openA
 
 // User Dashboard Metric Cards Clicks
 document.querySelector('#btnMetricReports')?.addEventListener('click', openMyReports);
-document.querySelector('#btnMetricMatches')?.addEventListener('click', async () => {
-  const matchesSection = document.querySelector('#matches') || document.querySelector('#userSmartMatchesContainer');
-  if (matchesSection) {
-    matchesSection.scrollIntoView({ behavior: 'smooth' });
-  }
-  await loadSmartMatches();
-});
+document.querySelector('#btnMetricMatches')?.addEventListener('click', openSmartMatchesModal);
 document.querySelectorAll('a[href="#matches"]').forEach((el) => {
-  el.addEventListener('click', async (e) => {
+  el.addEventListener('click', (e) => {
     e.preventDefault();
-    const matchesSection = document.querySelector('#matches') || document.querySelector('#userSmartMatchesContainer');
-    if (matchesSection) {
-      matchesSection.scrollIntoView({ behavior: 'smooth' });
-    }
-    await loadSmartMatches();
+    closeMobileMenu();
+    openSmartMatchesModal();
   });
+});
+document.querySelector('#mobileNavMatches')?.addEventListener('click', (e) => {
+  e.preventDefault();
+  closeMobileMenu();
+  openSmartMatchesModal();
 });
 document.querySelector('#btnMetricMessages')?.addEventListener('click', openConnections);
 document.querySelector('#btnMetricProfile')?.addEventListener('click', openUserProfile);

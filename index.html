@@ -652,6 +652,35 @@
       </div>
     </dialog>
 
+    <!-- Dedicated Smart Matches Hub Dialog / Page -->
+    <dialog id="smartMatchesDialog">
+      <div class="my-reports-panel" style="max-width: 860px; width: min(860px, calc(100vw - 24px));">
+        <div class="modal-head">
+          <div>
+            <p class="eyebrow"><span></span> AI-POWERED CORRELATION HUB</p>
+            <h2>⚡ Smart Matches</h2>
+            <p class="section-subtext" style="margin: 4px 0 0 0;">AI-powered potential matches for your lost and found reports.</p>
+          </div>
+          <button class="close" id="closeSmartMatchesModal" aria-label="Close">×</button>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; margin: 12px 0 16px; flex-wrap: wrap; gap: 8px;">
+          <span class="pill-badge" id="modalTotalMatchesBadge" style="background: #f8fafc; border: 1px solid #e2e8f0; font-size: 12px; color: var(--ink); padding: 5px 12px;">
+            Total Smart Matches: 0
+          </span>
+          <button class="button button-secondary button-sm" id="btnModalRefreshMatches">↺ Refresh</button>
+        </div>
+
+        <div id="smartMatchesModalGrid" class="matches-home-grid" style="max-height: 65vh; overflow-y: auto; padding-right: 4px;">
+          <!-- Dynamically populated with real match cards -->
+        </div>
+
+        <div class="modal-footer" style="margin-top: 18px;">
+          <button type="button" class="button button-secondary" id="btnCloseSmartMatchesFooter">Close</button>
+        </div>
+      </div>
+    </dialog>
+
     <!-- AI Smart Match Detail Dialog -->
     <dialog id="matchDetailDialog">
       <div class="item-detail-panel" style="max-width: 720px;">
