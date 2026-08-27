@@ -166,8 +166,25 @@
           </div>
         </div>
 
-        <!-- Dynamic Smart Matches Container (Only created when student has active matches) -->
-        <div id="userSmartMatchesContainer"></div>
+        <!-- Lower Smart Matches Section on Dashboard -->
+        <section class="matches-section" id="matches" style="margin-top: 36px;">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow"><span></span> AI-POWERED CORRELATION</p>
+              <h2>⚡ Live Smart Matches</h2>
+              <p class="section-subtext" id="lowerMatchesSubtext">AI-powered potential matches for your lost and found campus reports.</p>
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <span class="pill-badge" id="lowerMatchesCountBadge" style="background: #f8fafc; border: 1px solid #e2e8f0; font-size: 11px; padding: 4px 10px; color: var(--ink);">
+                0 Matches
+              </span>
+              <button class="button button-secondary button-sm" id="btnRefreshMatches" title="Refresh smart matches">↺ Refresh</button>
+            </div>
+          </div>
+          <div id="matchesHomeGrid" class="matches-home-grid">
+            <!-- Dynamically populated with real smart match cards -->
+          </div>
+        </section>
       </section>
 
       <!-- Dedicated Campus Administrator Control Center (Only shown when role === 'admin') -->

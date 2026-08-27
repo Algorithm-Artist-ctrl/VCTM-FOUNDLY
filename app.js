@@ -732,16 +732,22 @@ function renderMatchCardHtml(m, idx) {
 }
 
 async function loadSmartMatches() {
-  const container = document.querySelector('#userSmartMatchesContainer');
+  const lowerSection = document.querySelector('#matches');
+  const homeGrid = document.querySelector('#matchesHomeGrid');
+  const lowerBadge = document.querySelector('#lowerMatchesCountBadge');
+  const lowerSubtext = document.querySelector('#lowerMatchesSubtext');
+
   const modalGrid = document.querySelector('#smartMatchesModalGrid');
   const modalBadge = document.querySelector('#modalTotalMatchesBadge');
 
   if (!currentUser || currentUser.role === 'admin') {
-    if (container) container.innerHTML = '';
+    if (lowerSection) lowerSection.classList.add('hidden');
     if (modalGrid) modalGrid.innerHTML = '<p class="empty">Please sign in as a student or campus member to view Smart Matches.</p>';
     if (modalBadge) modalBadge.textContent = 'Total Smart Matches: 0';
     return;
   }
+
+  if (lowerSection) lowerSection.classList.remove('hidden');
 
   try {
     const data = await api('/api/smart-matches');
@@ -774,6 +780,14 @@ async function loadSmartMatches() {
     if (modalBadge) {
       modalBadge.textContent = `Total Smart Matches: ${relevantMatches.length}`;
     }
+    if (lowerBadge) {
+      lowerBadge.textContent = `${relevantMatches.length} Match${relevantMatches.length === 1 ? '' : 'es'}`;
+    }
+    if (lowerSubtext) {
+      lowerSubtext.textContent = relevantMatches.length > 0
+        ? `${relevantMatches.length} potential match${relevantMatches.length > 1 ? 'es' : ''} found for your campus reports.`
+        : `AI-powered potential matches for your lost and found campus reports.`;
+    }
 
     if (relevantMatches.length === 0) {
       const emptyHtml = `
@@ -786,63 +800,24 @@ async function loadSmartMatches() {
         </div>
       `;
 
-      if (container) {
-        container.innerHTML = `
-          <div class="matches-section" id="matches" style="margin-top: 32px;">
-            <div class="section-heading">
-              <div>
-                <p class="eyebrow"><span></span> AI-POWERED CORRELATION</p>
-                <h2>⚡ Live Smart Matches</h2>
-                <p class="section-subtext">Automated matching between lost reports and found campus items.</p>
-              </div>
-              <button class="button button-secondary button-sm" id="btnRefreshMatches">↺ Refresh</button>
-            </div>
-            ${emptyHtml}
-          </div>
-        `;
-        document.querySelector('#btnRefreshMatches')?.addEventListener('click', () => loadSmartMatches());
-      }
-
-      if (modalGrid) {
-        modalGrid.innerHTML = emptyHtml;
-      }
+      if (homeGrid) homeGrid.innerHTML = emptyHtml;
+      if (modalGrid) modalGrid.innerHTML = emptyHtml;
       return;
     }
 
     const cardsHtml = relevantMatches.map((m, idx) => renderMatchCardHtml(m, idx)).join('');
 
-    if (container) {
-      container.innerHTML = `
-        <div class="matches-section" id="matches" style="margin-top: 32px;">
-          <div class="section-heading">
-            <div>
-              <p class="eyebrow"><span></span> AI-POWERED CORRELATION</p>
-              <h2>⚡ Live Smart Matches</h2>
-              <p class="section-subtext">${relevantMatches.length} potential match${relevantMatches.length > 1 ? 'es' : ''} found for your campus reports.</p>
-            </div>
-            <button class="button button-secondary button-sm" id="btnRefreshMatches">↺ Refresh</button>
-          </div>
-          <div id="matchesHomeGrid" class="matches-home-grid">
-            ${cardsHtml}
-          </div>
-        </div>
-      `;
-      document.querySelector('#btnRefreshMatches')?.addEventListener('click', () => loadSmartMatches());
-    }
-
-    if (modalGrid) {
-      modalGrid.innerHTML = cardsHtml;
-    }
+    if (homeGrid) homeGrid.innerHTML = cardsHtml;
+    if (modalGrid) modalGrid.innerHTML = cardsHtml;
   } catch (err) {
-    if (container) container.innerHTML = '';
-    if (modalGrid) {
-      modalGrid.innerHTML = `
-        <div class="empty" style="padding:32px; text-align:center;">
-          <p style="color:var(--coral); font-weight:600;">We couldn't load Smart Matches right now.</p>
-          <button class="button button-secondary button-sm" style="margin-top:8px;" onclick="loadSmartMatches()">Try Again</button>
-        </div>
-      `;
-    }
+    const errorHtml = `
+      <div class="empty" style="padding:32px; text-align:center;">
+        <p style="color:var(--coral); font-weight:600;">We couldn't load Smart Matches right now.</p>
+        <button class="button button-secondary button-sm" style="margin-top:8px;" onclick="loadSmartMatches()">Try Again</button>
+      </div>
+    `;
+    if (homeGrid) homeGrid.innerHTML = errorHtml;
+    if (modalGrid) modalGrid.innerHTML = errorHtml;
   }
 }
 
@@ -878,6 +853,7 @@ function closeSmartMatchesPopup() {
 document.querySelector('#closeSmartMatchesModal')?.addEventListener('click', closeSmartMatchesPopup);
 document.querySelector('#btnCloseSmartMatchesFooter')?.addEventListener('click', closeSmartMatchesPopup);
 document.querySelector('#btnModalRefreshMatches')?.addEventListener('click', () => loadSmartMatches());
+document.querySelector('#btnRefreshMatches')?.addEventListener('click', () => loadSmartMatches());
 
 smartMatchesDialog?.addEventListener('click', (e) => {
   const rect = smartMatchesDialog.getBoundingClientRect();
